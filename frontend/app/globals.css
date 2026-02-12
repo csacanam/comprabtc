@@ -1,0 +1,210 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* 
+ * NEO-BRUTALISM DESIGN SYSTEM
+ * ============================
+ * Paleta: Negro, Blanco, Amarillo Bitcoin, Naranja Accent, Gris neutro
+ * Características: Bordes gruesos, sombras duras, tipografía clara
+ */
+
+:root {
+  /* Colores principales Neo-Brutalismo */
+  --background: #FFFEF5;          /* Crema suave (fondo principal) */
+  --foreground: #1A1A1A;          /* Negro suave (texto) */
+  --card: #FFFFFF;                /* Blanco puro (tarjetas) */
+  --card-foreground: #1A1A1A;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1A1A;
+  
+  /* Primario: Amarillo Bitcoin */
+  --primary: #F7931A;             /* Naranja Bitcoin */
+  --primary-foreground: #1A1A1A;
+  
+  /* Secundario: Gris claro */
+  --secondary: #F5F5F0;
+  --secondary-foreground: #1A1A1A;
+  
+  /* Muted: Gris más oscuro */
+  --muted: #E8E8E3;
+  --muted-foreground: #666666;
+  
+  /* Accent: Azul */
+  --accent: #3B82F6;
+  --accent-foreground: #FFFFFF;
+  
+  /* Destructive: Rojo */
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  
+  /* Bordes: Negro para neo-brutalismo */
+  --border: #1A1A1A;
+  --input: #1A1A1A;
+  --ring: #F7931A;
+  
+  /* Colores para gráficos */
+  --chart-1: #F7931A;             /* Naranja Bitcoin */
+  --chart-2: #3B82F6;             /* Azul */
+  --chart-3: #22C55E;             /* Verde (ganancia) */
+  --chart-4: #EF4444;             /* Rojo (pérdida) */
+  --chart-5: #8B5CF6;             /* Morado */
+  
+  /* Bordes redondeados mínimos (neo-brutal) */
+  --radius: 0px;
+  
+  /* Sidebar */
+  --sidebar: #FFFEF5;
+  --sidebar-foreground: #1A1A1A;
+  --sidebar-primary: #F7931A;
+  --sidebar-primary-foreground: #1A1A1A;
+  --sidebar-accent: #F5F5F0;
+  --sidebar-accent-foreground: #1A1A1A;
+  --sidebar-border: #1A1A1A;
+  --sidebar-ring: #F7931A;
+  
+  /* Colores adicionales para estados */
+  --success: #22C55E;
+  --success-foreground: #FFFFFF;
+  --warning: #FBBF24;
+  --warning-foreground: #1A1A1A;
+  --info: #3B82F6;
+  --info-foreground: #FFFFFF;
+}
+
+/* Dark mode (opcional, mantenemos light como principal) */
+.dark {
+  --background: #1A1A1A;
+  --foreground: #FFFEF5;
+  --card: #2A2A2A;
+  --card-foreground: #FFFEF5;
+  --popover: #2A2A2A;
+  --popover-foreground: #FFFEF5;
+  --primary: #F7931A;
+  --primary-foreground: #1A1A1A;
+  --secondary: #333333;
+  --secondary-foreground: #FFFEF5;
+  --muted: #404040;
+  --muted-foreground: #A0A0A0;
+  --accent: #3B82F6;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #FFFEF5;
+  --input: #FFFEF5;
+  --ring: #F7931A;
+  --chart-1: #F7931A;
+  --chart-2: #3B82F6;
+  --chart-3: #22C55E;
+  --chart-4: #EF4444;
+  --chart-5: #8B5CF6;
+  --sidebar: #1A1A1A;
+  --sidebar-foreground: #FFFEF5;
+  --sidebar-primary: #F7931A;
+  --sidebar-primary-foreground: #1A1A1A;
+  --sidebar-accent: #333333;
+  --sidebar-accent-foreground: #FFFEF5;
+  --sidebar-border: #FFFEF5;
+  --sidebar-ring: #F7931A;
+}
+
+@theme inline {
+  /* Tipografía: Space Grotesk para headings, Inter para body */
+  --font-sans: 'Inter', 'Inter Fallback', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  --font-display: 'Space Grotesk', 'Space Grotesk Fallback', system-ui, sans-serif;
+  
+  /* Colores del sistema */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  
+  /* Colores adicionales */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  
+  /* Bordes casi cuadrados para neo-brutalismo */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Tipografía display para headings */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* 
+ * UTILIDADES PERSONALIZADAS (sin @apply)
+ * ======================================
+ * Los componentes neo-brutal se definen directamente en React con estilos inline
+ */
+
+/* Texto con balance */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Ocultar scrollbar pero permitir scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
