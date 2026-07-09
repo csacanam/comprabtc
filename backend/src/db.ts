@@ -1,0 +1,130 @@
+import { createClient } from "@supabase/supabase-js";
+import { config } from "./config.js";
+
+export const supabase = createClient(config.supabaseUrl, config.supabaseServiceKey);
+
+export interface PlanRow {
+  id: string;
+  user_id: string;
+  wallet_address: string;
+  amount_per_run: number;
+  frequency_seconds: number;
+  stop_loss_pct: number | null;
+  status: string;
+  next_run_at: string;
+}
+
+export async function upsertUserAndPlan(input: {
+  walletAddress: string;
+  amountPerRun: number;
+  frequencySeconds: number;
+  stopLossPct?: number;
+  email?: string;
+}) {
+  const wallet = input.walletAddress.toLowerCase();
+
+  const { data: user, error: userErr } = await supabase
+    .from("agent_users")
+    .upsert({ wallet_address: wallet, email: input.email ?? null }, { onConflict: "wallet_address" })
+    .select()
+    .single();
+  if (userErr) throw userErr;
+
+  const { data: plan, error: planErr } = await supabase
+    .from("agent_plans")
+    .upsert(
+      {
+        user_id: user.id,
+        wallet_address: wallet,
+        amount_per_run: input.amountPerRun,
+        frequency_seconds: input.frequencySeconds,
+        stop_loss_pct: input.stopLossPct ?? null,
+        status: "active",
+        next_run_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "wallet_address" },
+    )
+    .select()
+    .single();
+  if (planErr) throw planErr;
+  return plan as PlanRow;
+}
+
+export async function getDuePlans(): Promise<PlanRow[]> {
+  const { data, error } = await supabase
+    .from("agent_plans")
+    .select("*")
+    .in("status", ["active", "no_funds"]) // no_funds se reintenta en cada ciclo
+    .lte("next_run_at", new Date().toISOString());
+  if (error) throw error;
+  return (data ?? []) as PlanRow[];
+}
+
+export async function getPlanByWallet(walletAddress: string): Promise<PlanRow | null> {
+  const { data, error } = await supabase
+    .from("agent_plans")
+    .select("*")
+    .eq("wallet_address", walletAddress.toLowerCase())
+    .maybeSingle();
+  if (error) throw error;
+  return data as PlanRow | null;
+}
+
+export async function setPlanStatus(planId: string, status: string, nextRunAt?: Date) {
+  const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  if (nextRunAt) patch.next_run_at = nextRunAt.toISOString();
+  const { error } = await supabase.from("agent_plans").update(patch).eq("id", planId);
+  if (error) throw error;
+}
+
+export async function recordExecution(input: {
+  planId: string;
+  status: string;
+  executeTx?: string;
+  usdtIn?: number;
+  feeUsdt?: number;
+  wbtcOut?: number;
+  error?: string;
+}) {
+  const { error } = await supabase.from("agent_executions").insert({
+    plan_id: input.planId,
+    status: input.status,
+    execute_tx: input.executeTx ?? null,
+    usdt_in: input.usdtIn ?? null,
+    fee_usdt: input.feeUsdt ?? null,
+    wbtc_out: input.wbtcOut ?? null,
+    error: input.error ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function getExecutions(planId: string, limit = 50) {
+  const { data, error } = await supabase
+    .from("agent_executions")
+    .select("*")
+    .eq("plan_id", planId)
+    .order("run_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Costo promedio: total USDT gastado / total sats comprados (solo ejecuciones exitosas). */
+export async function getCostBasis(planId: string) {
+  const { data, error } = await supabase
+    .from("agent_executions")
+    .select("usdt_in, wbtc_out")
+    .eq("plan_id", planId)
+    .eq("status", "success");
+  if (error) throw error;
+  let usdt = 0;
+  let sats = 0;
+  for (const row of data ?? []) {
+    usdt += Number(row.usdt_in ?? 0);
+    sats += Number(row.wbtc_out ?? 0);
+  }
+  if (sats === 0) return null;
+  // precio promedio en USDT humanos por BTC
+  return { totalUsdt: usdt, totalSats: sats, avgPriceUsdtPerBtc: (usdt / 1e6) / (sats / 1e8) };
+}

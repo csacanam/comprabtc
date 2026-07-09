@@ -1,479 +1,271 @@
 /**
  * PÁGINA DE PLAN DCA
  * ===================
- * Configurar o gestionar el plan de compras automáticas.
+ * Configurar o gestionar el plan de compras automáticas de Bitcoin.
+ * Flujo on-chain: approve(USDT, presupuesto) + createPlan(monto, intervalo).
+ * Los fondos se quedan en la billetera del usuario; el agente cobra por cuotas.
  */
 
 'use client';
 
-import React from "react"
-
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/authStore';
-import { useDcaStore } from '@/stores/dcaStore';
-import { Button, Input, Select, Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/neo-brutal';
+import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseUnits, formatUnits } from 'viem';
+import { Button, Input, Select, Card, CardContent, Badge } from '@/components/neo-brutal';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import { formatCOP, nextPurchaseDate, formatDate, formatBTC, formatRelativeDate } from '@/domain/utils';
-import { FREQUENCY_LABELS, getPlanStatus, PURCHASE_STATUS_LABELS, type DcaFrequency, type PurchaseStatus } from '@/domain/models';
-import Link from 'next/link';
-import { MIN_DCA_AMOUNT_COP } from '@/data/seed';
+  USDT, WBTC, POOL_FEE, EXECUTOR, erc20Abi, dcaExecutorAbi, attributionSuffix,
+} from '@/lib/web3/contracts';
+import { usePrefs, type DictKey } from '@/lib/prefs';
+import { fetchPlan, registerPlan } from '@/services/api';
 
-// Opciones de frecuencia
-const frequencyOptions = [
-  { value: 'weekly', label: 'Semanal (cada 7 días)' },
-  { value: 'biweekly', label: 'Quincenal (cada 14 días)' },
-  { value: 'monthly', label: 'Mensual (cada 30 días)' },
-];
+// Frecuencias disponibles en el formulario (segundos → minInterval del contrato).
+// Etapa hackathon: solo las de alta frecuencia. DISPLAY incluye todas para
+// mostrar bien planes viejos.
+const FREQUENCIES = ['3600', '21600', '43200'] as const;
+const DISPLAY_FREQUENCIES = ['3600', '21600', '43200', '86400', '604800'];
 
-// Montos sugeridos
-const suggestedAmounts = [100000, 200000, 500000, 1000000];
+// Montos sugeridos por cuota (USDT)
+const suggestedAmounts = [0.1, 1, 5, 20];
+
+// Cuántas cuotas autoriza el approve (presupuesto = monto × cuotas)
+const BUDGET_RUNS = ['10', '25', '50'] as const;
+
+const MIN_AMOUNT_USDT = 0.1;
+const MAX_AMOUNT_USDT = 50; // etapa hackathon: tickets chicos y frecuentes (liquidez WBTC: PLAN.md §2.5)
 
 export default function PlanPage() {
   const router = useRouter();
-  const { session } = useAuthStore();
-  const { plan, bankLink, purchases, destinationAddress, savePlan, togglePlan, isLoading } = useDcaStore();
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const queryClient = useQueryClient();
+  const { t, locale } = usePrefs();
+
+  const frequencyOptions = FREQUENCIES.map((value) => ({
+    value,
+    label: t(`freq.${value}` as DictKey),
+  }));
+  const budgetOptions = BUDGET_RUNS.map((value) => ({
+    value,
+    label: t('plan.budgetOption', { n: value }),
+  }));
 
   // Estado del formulario
   const [amount, setAmount] = useState('');
-  const [frequency, setFrequency] = useState<DcaFrequency>('weekly');
+  const [frequency, setFrequency] = useState('86400');
+  const [budgetRuns, setBudgetRuns] = useState('25');
+  const [stopLoss, setStopLoss] = useState('');
   const [error, setError] = useState('');
+  const [step, setStep] = useState<'idle' | 'approving' | 'creating' | 'registering'>('idle');
 
-  // Modal reactivar plan (solo en vista pausado)
-  const [reactivateModalOpen, setReactivateModalOpen] = useState(false);
-  const [reactivateAmount, setReactivateAmount] = useState('');
-  const [reactivateFrequency, setReactivateFrequency] = useState<DcaFrequency>('weekly');
-  const [reactivateError, setReactivateError] = useState('');
+  // Plan on-chain (fuente de verdad)
+  const { data: onchainPlan, refetch: refetchPlan } = useReadContract({
+    address: EXECUTOR,
+    abi: dcaExecutorAbi,
+    functionName: 'plans',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
 
-  // Inicializar con valores del plan existente
-  useEffect(() => {
-    if (plan) {
-      setAmount(plan.amountCop.toString());
-      setFrequency(plan.frequency);
-    }
-  }, [plan]);
+  // Datos del backend (historial, próxima cuota)
+  const { data: apiPlan } = useQuery({
+    queryKey: ['plan', address],
+    queryFn: () => fetchPlan(address!),
+    enabled: !!address,
+    refetchInterval: 30_000,
+  });
 
-  // Validación del monto
-  const amountNumber = parseInt(amount.replace(/\D/g, '')) || 0;
-  const amountError = amountNumber > 0 && amountNumber < MIN_DCA_AMOUNT_COP
-    ? `El monto mínimo es ${formatCOP(MIN_DCA_AMOUNT_COP)}`
+  const isActive = onchainPlan?.[3] === true;
+
+  const amountNumber = parseFloat(amount) || 0;
+  const amountError =
+    amountNumber > 0 && (amountNumber < MIN_AMOUNT_USDT || amountNumber > MAX_AMOUNT_USDT)
+      ? t('plan.amountError', { min: MIN_AMOUNT_USDT, max: MAX_AMOUNT_USDT })
+      : '';
+  const stopLossNumber = parseFloat(stopLoss) || 0;
+  const canSubmit =
+    amountNumber >= MIN_AMOUNT_USDT && amountNumber <= MAX_AMOUNT_USDT && step === 'idle';
+
+  const isLoading = step !== 'idle';
+  const loadingLabel =
+    step === 'approving' ? t('plan.approving')
+    : step === 'creating' ? t('plan.creating')
+    : step === 'registering' ? t('plan.registering')
     : '';
 
-  const canSubmit = amountNumber >= MIN_DCA_AMOUNT_COP && !isLoading;
-
-  // Guardar plan
+  // Crear plan: approve + createPlan + registro en backend
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!canSubmit || !session) return;
+    if (!canSubmit || !address || !publicClient) return;
+    setError('');
+
+    const amountPerRun = parseUnits(amount, 6);
+    const budget = amountPerRun * BigInt(budgetRuns);
+    const suffix = attributionSuffix();
 
     try {
-      await savePlan(session.userId, amountNumber, frequency);
-      
-      // Si no tiene banco conectado, ir a conectar
-      if (!bankLink || bankLink.status !== 'connected') {
-        router.push('/app/bank-connect');
-      }
+      // 1. approve del presupuesto total (los fondos siguen en tu billetera)
+      setStep('approving');
+      const approveHash = await writeContractAsync({
+        address: USDT,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [EXECUTOR, budget],
+        dataSuffix: suffix,
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+
+      // 2. createPlan con límites on-chain
+      setStep('creating');
+      const createHash = await writeContractAsync({
+        address: EXECUTOR,
+        abi: dcaExecutorAbi,
+        functionName: 'createPlan',
+        args: [amountPerRun, BigInt(frequency), WBTC, POOL_FEE],
+        dataSuffix: suffix,
+      });
+      await publicClient.waitForTransactionReceipt({ hash: createHash });
+
+      // 3. registrar en el backend para que el agente lo ejecute
+      setStep('registering');
+      await registerPlan({
+        walletAddress: address,
+        frequencySeconds: Number(frequency),
+        stopLossPct: stopLossNumber > 0 ? stopLossNumber : undefined,
+      });
+
+      await refetchPlan();
+      await queryClient.invalidateQueries({ queryKey: ['plan', address] });
+      router.push('/app');
     } catch (err) {
-      setError('Error al guardar el plan. Intenta de nuevo.');
+      console.error(err);
+      setError(t('plan.submitError'));
+    } finally {
+      setStep('idle');
     }
   };
 
-  // Toggle plan activo/pausado
-  const handleTogglePlan = async () => {
-    if (!session || !plan) return;
-    await togglePlan(session.userId, !plan.isActive);
-  };
-
-  // Abrir modal de reactivación con datos actuales del plan
-  const openReactivateModal = () => {
-    if (plan) {
-      setReactivateAmount(plan.amountCop.toString());
-      setReactivateFrequency(plan.frequency);
-      setReactivateError('');
-    }
-    setReactivateModalOpen(true);
-  };
-
-  const reactivateAmountNumber = parseInt(reactivateAmount.replace(/\D/g, ''), 10) || 0;
-  const reactivateAmountError = reactivateAmountNumber > 0 && reactivateAmountNumber < MIN_DCA_AMOUNT_COP
-    ? `El monto mínimo es ${formatCOP(MIN_DCA_AMOUNT_COP)}`
-    : '';
-  const canReactivate = reactivateAmountNumber >= MIN_DCA_AMOUNT_COP && !isLoading;
-
-  const handleReactivateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!session || !plan || !canReactivate) return;
-    setReactivateError('');
+  // Cancelar plan on-chain
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancel = async () => {
+    if (!address || !publicClient) return;
+    setCancelling(true);
+    setError('');
     try {
-      await savePlan(session.userId, reactivateAmountNumber, reactivateFrequency);
-      await togglePlan(session.userId, true);
-      setReactivateModalOpen(false);
+      const hash = await writeContractAsync({
+        address: EXECUTOR,
+        abi: dcaExecutorAbi,
+        functionName: 'cancelPlan',
+        dataSuffix: attributionSuffix(),
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refetchPlan();
+      await queryClient.invalidateQueries({ queryKey: ['plan', address] });
     } catch (err) {
-      setReactivateError('Error al reactivar. Intenta de nuevo.');
+      console.error(err);
+      setError(t('plan.cancelError'));
+    } finally {
+      setCancelling(false);
     }
   };
 
-  // Formatear input de monto
-  const handleAmountChange = (value: string) => {
-    // Solo permitir números
-    const numericValue = value.replace(/\D/g, '');
-    setAmount(numericValue);
-  };
-
-  const planStatus = plan ? getPlanStatus(plan) : null;
-  const showActiveView = plan && (
-    (planStatus === 'active' && bankLink?.status === 'connected') ||
-    planStatus === 'payment_failed'
-  );
-
-  // Si ya tiene plan activo (o activo con fallo de pago), mostrar gestión
-  if (showActiveView && plan) {
-    const nextPurchase = nextPurchaseDate(plan.frequency);
+  // ===== Vista: plan activo =====
+  if (isActive && onchainPlan) {
+    const planAmount = formatUnits(onchainPlan[0], 6);
+    const intervalSeconds = Number(onchainPlan[1]);
+    const nextRunAt = apiPlan?.plan?.next_run_at ? new Date(apiPlan.plan.next_run_at) : null;
 
     return (
       <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
-        <h1 className="text-2xl font-bold">Tu plan DCA</h1>
+        <h1 className="text-2xl font-bold">{t('plan.title')}</h1>
 
-        {/* Alerta fallo de pago */}
-        {planStatus === 'payment_failed' && (
-          <Card className="bg-destructive/10 border-destructive">
-            <CardContent className="space-y-3 py-4">
-              <p className="font-bold">Última compra no procesada</p>
-              <p className="text-sm text-muted-foreground">
-                Verifica tu banco o saldo disponible. Intentaremos nuevamente en el próximo ciclo.
-              </p>
-              <Link href="/app/bank-connect">
-                <Button fullWidth variant="primary" size="sm">Reconectar banco</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Aviso: billetera destino sin configurar */}
-        {!destinationAddress && (
-          <Card className="bg-warning/10 border-warning">
-            <CardContent className="space-y-3 py-4">
-              <p className="font-bold">Billetera destino sin configurar</p>
-              <p className="text-sm text-muted-foreground">
-                Tus compras no podrán ejecutarse hasta que configures una Billetera destino.
-              </p>
-              <Link href="/app/settings" className="block">
-                <Button fullWidth variant="primary">Configurar billetera destino</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Plan actual */}
         <Card variant="primary">
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-primary-foreground/80">Estado</span>
-              <Badge variant="success">Activo</Badge>
+              <span className="text-sm text-primary-foreground/80">{t('plan.state')}</span>
+              <Badge variant="success">{t('plan.active')}</Badge>
             </div>
 
             <div className="space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-primary-foreground/20">
-                <span className="text-sm text-primary-foreground/80">Monto por compra</span>
-                <span className="font-bold">{formatCOP(plan.amountCop)}</span>
+                <span className="text-sm text-primary-foreground/80">{t('plan.amountPerRun')}</span>
+                <span className="font-bold">${planAmount} USDT</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-primary-foreground/20">
-                <span className="text-sm text-primary-foreground/80">Frecuencia</span>
-                <span className="font-bold">{FREQUENCY_LABELS[plan.frequency]}</span>
+                <span className="text-sm text-primary-foreground/80">{t('plan.frequency')}</span>
+                <span className="font-bold">
+                  {DISPLAY_FREQUENCIES.includes(String(intervalSeconds))
+                    ? t(`freq.${intervalSeconds}` as DictKey)
+                    : `${intervalSeconds}s`}
+                </span>
               </div>
               <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-primary-foreground/80">Próxima compra</span>
-                <span className="font-bold">{formatDate(nextPurchase)}</span>
+                <span className="text-sm text-primary-foreground/80">{t('plan.nextRun')}</span>
+                <span className="font-bold">
+                  {nextRunAt ? nextRunAt.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : t('plan.soon')}
+                </span>
               </div>
             </div>
           </CardContent>
         </Card>
-
-        {/* Banco / Conexión bancaria */}
-        <Card className={bankLink?.status !== 'connected' ? 'bg-destructive/5 border-destructive/50' : ''}>
-          <CardContent className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-sm font-bold">Conexión bancaria</p>
-                {bankLink?.status === 'connected' ? (
-                  <p className="text-sm text-muted-foreground">{bankLink.bankName}</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Necesitamos reconectar tu banco para procesar pagos.
-                  </p>
-                )}
-              </div>
-              <Badge variant={bankLink?.status === 'connected' ? 'success' : 'destructive'}>
-                {bankLink?.status === 'connected' ? 'Conectado' : 'Desconectado'}
-              </Badge>
-            </div>
-
-            {bankLink?.status !== 'connected' && (
-              <Link href="/app/bank-connect" className="block">
-                <Button fullWidth variant="primary">
-                  Reconectar banco
-                </Button>
-              </Link>
-            )}
-
-            {bankLink?.status === 'connected' && (
-              <Link href="/app/bank-connect" className="block">
-                <Button fullWidth variant="outline">
-                  Cambiar banco
-                </Button>
-              </Link>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Acciones */}
-        <div className="space-y-3">
-          <Button 
-            variant="outline" 
-            fullWidth
-            onClick={handleTogglePlan}
-            isLoading={isLoading}
-          >
-            Pausar plan
-          </Button>
-          <p className="text-xs text-center text-muted-foreground">
-            Pausar el plan detendrá las compras automáticas temporalmente.
-          </p>
-        </div>
-
-        {/* Historial de compras */}
-        {purchases.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold">Historial de compras ({purchases.length})</h2>
-            
-            <div className="space-y-3">
-              {purchases.slice(0, 10).map((purchase) => {
-                const status = (purchase.status ?? 'enviado') as PurchaseStatus;
-                const statusVariant = status === 'enviado' ? 'success' : status === 'procesando' ? 'warning' : 'secondary';
-                return (
-                  <Card key={purchase.id}>
-                    <CardContent className="py-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <p className="font-bold">{formatBTC(purchase.btcAmount)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatRelativeDate(new Date(purchase.createdAt))}
-                          </p>
-                          <Badge variant={statusVariant} className="mt-1">
-                            {PURCHASE_STATUS_LABELS[status]}
-                          </Badge>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{formatCOP(purchase.amountCop)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            1 BTC = {formatCOP(purchase.marketPriceCopPerBtc)}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-
-              {purchases.length > 10 && (
-                <p className="text-center text-sm text-muted-foreground">
-                  Mostrando las últimas 10 de {purchases.length} compras
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Si plan está pausado
-  if (plan && planStatus === 'paused' && bankLink?.status === 'connected') {
-    return (
-      <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
-        <h1 className="text-2xl font-bold">Plan pausado</h1>
 
         <Card>
-          <CardContent className="space-y-4 text-center">
-            <div className="w-16 h-16 mx-auto bg-warning/20 border-[3px] border-foreground flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16"/>
-                <rect x="14" y="4" width="4" height="16"/>
-              </svg>
-            </div>
-
-            <div>
-              <h2 className="text-xl font-bold">Tu plan está en pausa</h2>
-              <p className="text-muted-foreground mt-2">
-                No se realizarán compras automáticas hasta que lo reactives.
-              </p>
-            </div>
+          <CardContent className="space-y-2">
+            <p className="text-sm font-bold">{t('plan.custodyTitle')}</p>
+            <p className="text-sm text-muted-foreground">{t('plan.custodyBody')}</p>
           </CardContent>
         </Card>
 
-        <Button 
-          fullWidth 
-          size="lg"
-          onClick={openReactivateModal}
-          disabled={isLoading}
-        >
-          Reactivar plan
-        </Button>
-
-        <Dialog open={reactivateModalOpen} onOpenChange={setReactivateModalOpen}>
-          <DialogContent className="max-w-lg border-[3px] border-foreground" showCloseButton={true}>
-            <DialogHeader>
-              <DialogTitle>Reactivar plan</DialogTitle>
-              <p className="text-sm text-muted-foreground">
-                Revisa o cambia el monto y la frecuencia. Las compras automáticas se reanudarán con esta configuración.
-              </p>
-            </DialogHeader>
-            <form onSubmit={handleReactivateSubmit} className="space-y-4">
-              <div className="space-y-3">
-                <Input
-                  label="Monto por compra"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="Ej: 200000"
-                  value={reactivateAmount ? formatCOP(reactivateAmountNumber).replace('$', '').trim() : ''}
-                  onChange={(e) => setReactivateAmount(e.target.value.replace(/\D/g, ''))}
-                  error={reactivateAmountError}
-                  hint={`Mínimo ${formatCOP(MIN_DCA_AMOUNT_COP)}`}
-                />
-                <div className="flex flex-wrap gap-2">
-                  {suggestedAmounts.map((suggestedAmount) => (
-                    <button
-                      key={suggestedAmount}
-                      type="button"
-                      onClick={() => setReactivateAmount(suggestedAmount.toString())}
-                      className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
-                        ${reactivateAmountNumber === suggestedAmount 
-                          ? 'bg-primary text-primary-foreground' 
-                          : 'bg-secondary hover:bg-muted'
-                        }`}
-                    >
-                      {formatCOP(suggestedAmount)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Select
-                label="Frecuencia"
-                value={reactivateFrequency}
-                onChange={(e) => setReactivateFrequency(e.target.value as DcaFrequency)}
-                options={frequencyOptions}
-              />
-              {reactivateError && (
-                <p className="text-sm font-medium text-destructive bg-destructive/10 px-4 py-3 border-2 border-destructive">
-                  {reactivateError}
-                </p>
-              )}
-              <DialogFooter className="gap-2 sm:gap-0">
-                <DialogClose asChild>
-                  <Button type="button" variant="outline">
-                    Cancelar
-                  </Button>
-                </DialogClose>
-                <Button type="submit" disabled={!canReactivate} isLoading={isLoading}>
-                  Reactivar plan
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Historial de compras (no cambia si el plan está pausado) */}
-        {purchases.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold">Historial de compras ({purchases.length})</h2>
-            <div className="space-y-3">
-              {purchases.slice(0, 10).map((purchase) => {
-                const status = (purchase.status ?? 'enviado') as PurchaseStatus;
-                const statusVariant = status === 'enviado' ? 'success' : status === 'procesando' ? 'warning' : 'secondary';
-                return (
-                  <Card key={purchase.id}>
-                    <CardContent className="py-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <p className="font-bold">{formatBTC(purchase.btcAmount)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatRelativeDate(new Date(purchase.createdAt))}
-                          </p>
-                          <Badge variant={statusVariant} className="mt-1">
-                            {PURCHASE_STATUS_LABELS[status]}
-                          </Badge>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{formatCOP(purchase.amountCop)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            1 BTC = {formatCOP(purchase.marketPriceCopPerBtc)}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              {purchases.length > 10 && (
-                <p className="text-center text-sm text-muted-foreground">
-                  Mostrando las últimas 10 de {purchases.length} compras
-                </p>
-              )}
-            </div>
-          </div>
+        {error && (
+          <p className="text-sm font-medium text-destructive bg-destructive/10 px-4 py-3 border-2 border-destructive">
+            {error}
+          </p>
         )}
+
+        <Button variant="outline" fullWidth onClick={handleCancel} isLoading={cancelling}>
+          {t('plan.cancel')}
+        </Button>
+        <p className="text-xs text-center text-muted-foreground">{t('plan.cancelHint')}</p>
       </div>
     );
   }
 
-  // Formulario para crear/editar plan
+  // ===== Vista: crear plan =====
   return (
     <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">
-          {plan ? 'Editar plan' : 'Configura tu plan'}
-        </h1>
-        <p className="text-muted-foreground">
-          Define cuánto y con qué frecuencia quieres ahorrar en Bitcoin.
-        </p>
+        <h1 className="text-2xl font-bold">{t('plan.createTitle')}</h1>
+        <p className="text-muted-foreground">{t('plan.createSubtitle')}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Monto */}
+        {/* Monto por cuota */}
         <div className="space-y-3">
           <Input
-            label="¿Cuánto quieres ahorrar en Bitcoin?"
+            label={t('plan.amountLabel')}
             type="text"
-            inputMode="numeric"
-            placeholder="Ej: 200000"
-            value={amount ? formatCOP(amountNumber).replace('$', '').trim() : ''}
-            onChange={(e) => handleAmountChange(e.target.value)}
+            inputMode="decimal"
+            placeholder="Ej: 5"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
             error={amountError}
-            hint={`Mínimo ${formatCOP(MIN_DCA_AMOUNT_COP)}`}
+            hint={t('plan.amountHint', { min: MIN_AMOUNT_USDT, max: MAX_AMOUNT_USDT })}
           />
-
-          {/* Montos sugeridos */}
           <div className="flex flex-wrap gap-2">
-            {suggestedAmounts.map((suggestedAmount) => (
+            {suggestedAmounts.map((suggested) => (
               <button
-                key={suggestedAmount}
+                key={suggested}
                 type="button"
-                onClick={() => setAmount(suggestedAmount.toString())}
+                onClick={() => setAmount(suggested.toString())}
                 className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
-                  ${amountNumber === suggestedAmount 
-                    ? 'bg-primary text-primary-foreground' 
+                  ${amountNumber === suggested
+                    ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary hover:bg-muted'
                   }`}
               >
-                {formatCOP(suggestedAmount)}
+                ${suggested}
               </button>
             ))}
           </div>
@@ -481,60 +273,68 @@ export default function PlanPage() {
 
         {/* Frecuencia */}
         <Select
-          label="¿Con qué frecuencia?"
+          label={t('plan.frequencyLabel')}
           value={frequency}
-          onChange={(e) => setFrequency(e.target.value as DcaFrequency)}
+          onChange={(e) => setFrequency(e.target.value)}
           options={frequencyOptions}
-          hint="Recomendamos semanal para mejor promediado"
+          hint={t('plan.frequencyHint')}
+        />
+
+        {/* Presupuesto autorizado */}
+        <Select
+          label={t('plan.budgetLabel')}
+          value={budgetRuns}
+          onChange={(e) => setBudgetRuns(e.target.value)}
+          options={budgetOptions}
+          hint={t('plan.budgetHint')}
+        />
+
+        {/* Stop-loss opcional */}
+        <Input
+          label={t('plan.stopLossLabel')}
+          type="text"
+          inputMode="decimal"
+          placeholder="Ej: 15"
+          value={stopLoss}
+          onChange={(e) => setStopLoss(e.target.value.replace(/[^\d.]/g, ''))}
+          hint={t('plan.stopLossHint')}
         />
 
         {/* Resumen */}
-        {amountNumber >= MIN_DCA_AMOUNT_COP && (
+        {canSubmit && (
           <Card variant="secondary">
             <CardContent>
-              <p className="text-sm">
-                Ahorrarás aproximadamente{' '}
-                <strong>
-                  {formatCOP(
-                    frequency === 'weekly' 
-                      ? amountNumber * 4 
-                      : frequency === 'biweekly' 
-                        ? amountNumber * 2 
-                        : amountNumber
-                  )}
-                </strong>{' '}
-                al mes en compras automáticas de Bitcoin.
-              </p>
+              <p
+                className="text-sm"
+                dangerouslySetInnerHTML={{
+                  __html: t('plan.summary', {
+                    total: (amountNumber * Number(budgetRuns)).toFixed(2),
+                    runs: budgetRuns,
+                    amount: amountNumber,
+                    freq: (frequencyOptions.find((f) => f.value === frequency)?.label ?? '').toLowerCase(),
+                  }),
+                }}
+              />
+              <p className="text-xs text-muted-foreground mt-2">{t('plan.feeNote')}</p>
             </CardContent>
           </Card>
         )}
 
-        {/* Error */}
         {error && (
           <p className="text-sm font-medium text-destructive bg-destructive/10 px-4 py-3 border-2 border-destructive">
             {error}
           </p>
         )}
 
-        {/* Submit */}
-        <Button 
-          type="submit" 
-          fullWidth 
-          size="lg"
-          disabled={!canSubmit}
-          isLoading={isLoading}
-        >
-          Continuar
+        <Button type="submit" fullWidth size="lg" disabled={!canSubmit} isLoading={isLoading}>
+          {isLoading ? loadingLabel : t('plan.submit')}
         </Button>
       </form>
 
-      {/* Info */}
       <Card>
         <CardContent>
-          <h3 className="font-bold mb-2">¿Por qué funciona el DCA?</h3>
-          <p className="text-sm text-muted-foreground">
-            Al comprar Bitcoin de forma periódica, evitas depender de un solo momento del mercado. Con el tiempo, esto ayuda a bajar el precio promedio y a reducir el impacto de decisiones emocionales.
-          </p>
+          <h3 className="font-bold mb-2">{t('plan.whyTitle')}</h3>
+          <p className="text-sm text-muted-foreground">{t('plan.whyBody')}</p>
         </CardContent>
       </Card>
     </div>

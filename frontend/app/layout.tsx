@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
+import { Web3Provider } from '@/components/Web3Provider'
 import './globals.css'
 
 // Fuentes: Inter para body, Space Grotesk para títulos
@@ -63,7 +64,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${inter.variable} ${spaceGrotesk.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased min-h-screen bg-background">
-        {children}
+        <Web3Provider>{children}</Web3Provider>
         <ServiceWorkerRegistration />
         <Analytics />
       </body>

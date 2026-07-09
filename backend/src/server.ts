@@ -1,0 +1,195 @@
+import express from "express";
+import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { isAddress, formatUnits } from "viem";
+import { config, USDT, CELO_NETWORK, USDT_EIP712 } from "./config.js";
+import { readPlan, readUserFunds, readFees, quoteUsdtToWbtc, sendExecute, btcSpotPriceUsdt } from "./chain.js";
+import * as db from "./db.js";
+
+export function buildServer() {
+  const app = express();
+  app.use(express.json());
+
+  // CORS: el frontend corre en otro origen (localhost:3000 / Vercel)
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-PAYMENT, PAYMENT-SIGNATURE");
+    res.setHeader("Access-Control-Expose-Headers", "PAYMENT-REQUIRED, PAYMENT-RESPONSE");
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+    next();
+  });
+
+  // ------------------------------------------------------------- x402
+  // El facilitator de Celo exige X-API-Key en /settle (se crea firmando en x402.celo.org)
+  const authHeaders = async () => ({
+    verify: { "X-API-Key": config.x402ApiKey },
+    settle: { "X-API-Key": config.x402ApiKey },
+    supported: { "X-API-Key": config.x402ApiKey },
+  });
+  const facilitatorClient = new HTTPFacilitatorClient({
+    url: config.facilitatorUrl,
+    createAuthHeaders: authHeaders,
+  });
+  const resourceServer = new x402ResourceServer(facilitatorClient)
+    .register(CELO_NETWORK, new ExactEvmScheme())
+    .onSettleFailure(async (ctx) => {
+      console.error("[x402] settle FAILED:", ctx.error?.message ?? ctx.error);
+    });
+
+  app.use(
+    paymentMiddleware(
+      {
+        "POST /api/execute": {
+          accepts: {
+            scheme: "exact",
+            network: CELO_NETWORK,
+            payTo: config.payTo,
+            price: {
+              asset: USDT,
+              amount: config.executeFeeUsdt,
+              extra: { ...USDT_EIP712 },
+            },
+          },
+          description: "CompraBTC — ejecución de una cuota DCA (USDT→BTC en Celo)",
+        },
+      },
+      resourceServer,
+    ),
+  );
+
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true, service: "comprabtc-backend" });
+  });
+
+  // ---------------------------------------------------- ejecución (pagada)
+  // El agente/keeper paga x402 para llamar esto. Cualquiera que pague puede
+  // invocarlo: el contrato igual hace cumplir active/intervalo/monto on-chain.
+  app.post("/api/execute", async (req, res) => {
+    try {
+      const user = String(req.body?.user ?? "").toLowerCase();
+      if (!isAddress(user)) return res.status(400).json({ error: "invalid user address" });
+
+      // La verdad vive on-chain: si el plan existe en el contrato, este endpoint
+      // lo sirve — cualquier agente que pague el x402 puede invocarlo, sin
+      // registro previo (el plan se auto-registra en DB para el keeper).
+      const onchain = await readPlan(user as `0x${string}`);
+      if (!onchain.active) return res.status(409).json({ error: "plan not active on-chain" });
+
+      let planRow = await db.getPlanByWallet(user);
+      if (!planRow) {
+        planRow = await db.upsertUserAndPlan({
+          walletAddress: user,
+          amountPerRun: Number(onchain.amountPerRun),
+          frequencySeconds: Number(onchain.minInterval),
+        });
+      }
+
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      if (onchain.lastRun !== 0n && now < onchain.lastRun + onchain.minInterval) {
+        return res.status(409).json({ error: "interval not elapsed" });
+      }
+
+      // saldo/allowance → skip amable en vez de tx revertida
+      const { balance, allowance } = await readUserFunds(user as `0x${string}`);
+      if (balance < onchain.amountPerRun || allowance < onchain.amountPerRun) {
+        await db.recordExecution({ planId: planRow.id, status: "skipped_no_funds" });
+        await db.setPlanStatus(planRow.id, "no_funds", nextRun(planRow));
+        return res.status(402).json({ error: "insufficient balance or allowance", skipped: true });
+      }
+
+      // minOut: quote real del pool − slippage (fees leídos del contrato, no hardcodeados)
+      const fees = await readFees();
+      const feeTotal = (onchain.amountPerRun * fees.bps) / 10_000n + fees.flat;
+      const swapIn = onchain.amountPerRun - feeTotal;
+      const quoted = await quoteUsdtToWbtc(swapIn);
+      const minOut = quoted - (quoted * config.slippageBps) / 10_000n;
+
+      const { hash, receipt, executed } = await sendExecute(user as `0x${string}`, minOut);
+      if (receipt.status !== "success") {
+        await db.recordExecution({ planId: planRow.id, status: "failed", executeTx: hash, error: "tx reverted" });
+        return res.status(500).json({ error: "execution reverted", tx: hash });
+      }
+
+      await db.recordExecution({
+        planId: planRow.id,
+        status: "success",
+        executeTx: hash,
+        usdtIn: Number(executed?.amountIn ?? onchain.amountPerRun),
+        feeUsdt: Number(executed?.feeAmount ?? feeTotal),
+        wbtcOut: Number(executed?.amountOut ?? quoted),
+      });
+      await db.setPlanStatus(planRow.id, "active", nextRun(planRow));
+
+      return res.json({
+        ok: true,
+        tx: hash,
+        usdtIn: formatUnits(onchain.amountPerRun, 6),
+        sats: (executed?.amountOut ?? quoted).toString(),
+      });
+    } catch (err) {
+      console.error("[execute]", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ---------------------------------------------------- planes (no pagados)
+  app.post("/api/plans", async (req, res) => {
+    try {
+      const { walletAddress, frequencySeconds, stopLossPct, email } = req.body ?? {};
+      if (!isAddress(String(walletAddress ?? ""))) {
+        return res.status(400).json({ error: "invalid walletAddress" });
+      }
+      // la verdad vive on-chain: el plan debe existir y estar activo
+      const onchain = await readPlan(walletAddress as `0x${string}`);
+      if (!onchain.active) return res.status(409).json({ error: "no active on-chain plan for this wallet" });
+
+      const plan = await db.upsertUserAndPlan({
+        walletAddress,
+        amountPerRun: Number(onchain.amountPerRun),
+        frequencySeconds: Number(frequencySeconds ?? onchain.minInterval),
+        stopLossPct: stopLossPct != null ? Number(stopLossPct) : undefined,
+        email: email ? String(email) : undefined,
+      });
+      return res.json({ ok: true, plan });
+    } catch (err) {
+      console.error("[plans:post]", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/plans/:address", async (req, res) => {
+    try {
+      const address = req.params.address;
+      if (!isAddress(address)) return res.status(400).json({ error: "invalid address" });
+
+      const planRow = await db.getPlanByWallet(address);
+      if (!planRow) return res.status(404).json({ error: "not found" });
+
+      const [onchain, executions, costBasis, spot] = await Promise.all([
+        readPlan(address as `0x${string}`),
+        db.getExecutions(planRow.id),
+        db.getCostBasis(planRow.id),
+        btcSpotPriceUsdt().catch(() => null),
+      ]);
+
+      return res.json({ plan: planRow, onchain: serialize({ ...onchain }), executions, costBasis, btcPriceUsdt: spot });
+    } catch (err) {
+      console.error("[plans:get]", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
+  return app;
+}
+
+function nextRun(plan: db.PlanRow): Date {
+  return new Date(Date.now() + plan.frequency_seconds * 1000);
+}
+
+function serialize(obj: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v]),
+  );
+}
