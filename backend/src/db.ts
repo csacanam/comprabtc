@@ -157,6 +157,29 @@ export async function getGlobalStats(): Promise<GlobalStats> {
   };
 }
 
+/**
+ * Desglose de fees cobrados: los de planes de wallets internas (keeper) son
+ * circulares (nos cobramos a nosotros mismos); los externos son ingreso real.
+ */
+export async function getFeeBreakdown(internalWallets: string[]) {
+  const { data, error } = await supabase
+    .from("agent_executions")
+    .select("fee_usdt, plan:agent_plans!inner(wallet_address)")
+    .eq("status", "success");
+  if (error) throw error;
+  const internal = new Set(internalWallets.map((w) => w.toLowerCase()));
+  let external = 0;
+  let circular = 0;
+  let executions = 0;
+  for (const row of (data ?? []) as unknown as { fee_usdt: number | null; plan: { wallet_address: string } }[]) {
+    executions += 1;
+    const fee = Number(row.fee_usdt ?? 0);
+    if (internal.has(row.plan.wallet_address)) circular += fee;
+    else external += fee;
+  }
+  return { externalFees: external, circularFees: circular, executions };
+}
+
 /** Costo promedio: total USDT gastado / total sats comprados (solo ejecuciones exitosas). */
 export async function getCostBasis(planId: string) {
   const { data, error } = await supabase

@@ -1,6 +1,6 @@
 import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm";
-import { config, CELO_NETWORK, USDT } from "./config.js";
+import { config, CELO_NETWORK, USDT, WBTC } from "./config.js";
 import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans } from "./chain.js";
 import { erc20Abi } from "./abi.js";
 import { sendOps } from "./telegram.js";
@@ -75,14 +75,31 @@ async function opsMonitor() {
 
   if (Date.now() - lastDigestAt >= DIGEST_INTERVAL_MS) {
     lastDigestAt = Date.now();
-    const stats = await db.getGlobalStats().catch(() => null);
+    const [stats, pnl, price, keeperSats, treasuryUsdt] = await Promise.all([
+      db.getGlobalStats().catch(() => null),
+      db.getFeeBreakdown([keeperAccount.address]).catch(() => null),
+      btcSpotPriceUsdt().catch(() => null),
+      publicClient.readContract({ address: WBTC, abi: erc20Abi, functionName: "balanceOf", args: [keeperAccount.address] }),
+      publicClient.readContract({ address: USDT, abi: erc20Abi, functionName: "balanceOf", args: [config.payTo] }),
+    ]);
     if (stats) {
+      const settles = credits != null ? 500 - credits : null;
+      const creditCost = settles != null ? settles * 0.001 : null;
+      const keeperBtcUsd = price != null ? (Number(keeperSats) / 1e8) * price : null;
+      const pnlBlock = pnl
+        ? `\n💰 <b>P&L</b>\n` +
+          `Ingreso real (fees de usuarios): <b>$${(pnl.externalFees / 1e6).toFixed(3)}</b>\n` +
+          `Circular (keeper→nosotros, no es ingreso): $${(pnl.circularFees / 1e6).toFixed(3)} fees + $${settles != null ? (settles * 0.02).toFixed(2) : "?"} x402\n` +
+          `Costos reales: créditos ~$${creditCost?.toFixed(3) ?? "?"} + gas (CELO)\n` +
+          `Posiciones: treasury <b>$${(Number(treasuryUsdt) / 1e6).toFixed(2)} USDT</b> · keeper <b>$${usdt.toFixed(2)} USDT</b> + <b>${Number(keeperSats).toLocaleString("es-CO")} sats</b>${keeperBtcUsd != null ? ` (~$${keeperBtcUsd.toFixed(2)})` : ""}`
+        : "";
       await sendOps(
         `📊 <b>CompraBTC digest</b>\n` +
-          `Compras: <b>${stats.totalPurchases}</b> · Volumen: <b>$${(stats.totalVolumeUsdt / 1e6).toFixed(2)}</b> · Sats: <b>${stats.totalSats.toLocaleString("es-CO")}</b>\n` +
+          `Compras: <b>${stats.totalPurchases}</b> · Volumen: <b>$${(stats.totalVolumeUsdt / 1e6).toFixed(2)}</b> · Sats usuarios: <b>${stats.totalSats.toLocaleString("es-CO")}</b>\n` +
           `Planes activos: <b>${stats.activePlans}</b> · Usuarios: <b>${stats.totalUsers}</b>\n` +
-          `x402 liquidados: <b>${stats ? (credits != null ? 500 - credits : "?") : "?"}</b> · Créditos: <b>${credits ?? "?"}</b>\n` +
-          `Keeper: <b>$${usdt.toFixed(2)} USDT</b> · <b>${celo.toFixed(3)} CELO</b>`,
+          `x402 liquidados: <b>${settles ?? "?"}</b> · Créditos: <b>${credits ?? "?"}</b>\n` +
+          `Keeper: <b>${celo.toFixed(3)} CELO</b>` +
+          pnlBlock,
       );
     }
   }
