@@ -90,6 +90,20 @@ export const dcaExecutorAbi = [
   },
   {
     type: 'function',
+    name: 'feeBps',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint16' }],
+  },
+  {
+    type: 'function',
+    name: 'feeFlat',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'plans',
     stateMutability: 'view',
     inputs: [{ name: 'user', type: 'address' }],

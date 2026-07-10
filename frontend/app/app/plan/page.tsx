@@ -62,6 +62,20 @@ export default function PlanPage() {
     query: { enabled: !!address },
   });
 
+  // Fees reales del contrato (para mostrar la comisión sin hardcodear)
+  const { data: feeBpsData } = useReadContract({
+    address: EXECUTOR,
+    abi: dcaExecutorAbi,
+    functionName: 'feeBps',
+    query: { staleTime: 300_000 },
+  });
+  const { data: feeFlatData } = useReadContract({
+    address: EXECUTOR,
+    abi: dcaExecutorAbi,
+    functionName: 'feeFlat',
+    query: { staleTime: 300_000 },
+  });
+
   // Datos del backend (historial, próxima cuota)
   const { data: apiPlan } = useQuery({
     queryKey: ['plan', address],
@@ -80,6 +94,23 @@ export default function PlanPage() {
     amountNumber > 0 && (amountNumber < MIN_AMOUNT_USDT || amountNumber > MAX_AMOUNT_USDT)
       ? t('plan.amountError', { min: MIN_AMOUNT_USDT, max: MAX_AMOUNT_USDT })
       : '';
+
+  // Comisión por cuota según los fees del contrato: flat + bps
+  const feeBpsNum = feeBpsData != null ? Number(feeBpsData) : null;
+  const feeFlatUsd = feeFlatData != null ? Number(feeFlatData) / 1e6 : null;
+  const feeFor = (a: number) =>
+    feeBpsNum != null && feeFlatUsd != null ? feeFlatUsd + (a * feeBpsNum) / 10_000 : null;
+  const feePerRun = amountNumber > 0 ? feeFor(amountNumber) : null;
+  const feePct = feePerRun != null ? (feePerRun / amountNumber) * 100 : null;
+  // Tip: primer monto sugerido más grande donde la comisión baje del 2%
+  const tipAmount =
+    feePct != null && feePct > 2
+      ? SUGGESTED_AMOUNTS.find((a) => {
+          const f = feeFor(a);
+          return a > amountNumber && f != null && (f / a) * 100 <= 2;
+        }) ?? null
+      : null;
+  const tipPct = tipAmount != null ? ((feeFor(tipAmount)! / tipAmount) * 100) : null;
   const canSubmit =
     amountNumber >= MIN_AMOUNT_USDT && amountNumber <= MAX_AMOUNT_USDT && step === 'idle';
 
@@ -272,6 +303,23 @@ export default function PlanPage() {
               </button>
             ))}
           </div>
+
+          {/* Comisión visible al elegir el monto + tip para bajarla */}
+          {feePerRun != null && feePct != null && !amountError && (
+            <div className="text-sm space-y-1">
+              <p className={feePct > 2 ? 'text-warning-foreground bg-warning/20 px-3 py-2 border-2 border-foreground' : 'text-muted-foreground'}>
+                {t('plan.feePerRun', {
+                  fee: `$${feePerRun.toFixed(3)}`,
+                  pct: feePct.toFixed(1),
+                })}
+              </p>
+              {tipAmount != null && tipPct != null && (
+                <p className="text-muted-foreground">
+                  {t('plan.feeTip', { amount: `$${tipAmount}`, pct: tipPct.toFixed(1) })}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Frecuencia */}
