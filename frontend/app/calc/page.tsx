@@ -94,13 +94,17 @@ function simulate(prices: [number, number][], perBuy: number) {
   };
 }
 
-const WHY_KEYS = ['why1', 'why2', 'why3', 'why4'] as const;
-const WHY_EMOJI: Record<(typeof WHY_KEYS)[number], string> = {
-  why1: '🪙',
-  why2: '🔑',
-  why3: '🧘',
-  why4: '🛡️',
-};
+// Dos preguntas distintas: por qué el activo, y por qué nuestro método
+const WHY_BTC = [
+  { key: 'btc1', emoji: '🪙' },
+  { key: 'btc2', emoji: '🌍' },
+  { key: 'btc3', emoji: '🛡️' },
+] as const;
+const WHY_US = [
+  { key: 'us1', emoji: '🧘' },
+  { key: 'us2', emoji: '🔑' },
+  { key: 'us3', emoji: '🔍' },
+] as const;
 
 export default function CalcPage() {
   const { t, locale, lang, setLang } = usePrefs();
@@ -335,14 +339,30 @@ export default function CalcPage() {
             </div>
           )}
 
-          {/* ¿Por qué Bitcoin? — en lenguaje sencillo */}
+          {/* ¿Por qué Bitcoin? (el activo) — en lenguaje sencillo */}
           <div className="space-y-3 pt-4">
-            <h2 className="text-xl font-bold">{t('calc.whyTitle')}</h2>
-            {WHY_KEYS.map((key) => (
+            <h2 className="text-xl font-bold">{t('calc.whyBtcTitle')}</h2>
+            {WHY_BTC.map(({ key, emoji }) => (
               <Card key={key}>
                 <CardContent className="py-4 space-y-1">
                   <p className="font-bold">
-                    <span className="mr-2">{WHY_EMOJI[key]}</span>
+                    <span className="mr-2">{emoji}</span>
+                    {t(`calc.${key}t` as DictKey)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{t(`calc.${key}b` as DictKey)}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* ¿Por qué con CompraBTC? (el método) */}
+          <div className="space-y-3 pt-2">
+            <h2 className="text-xl font-bold">{t('calc.whyUsTitle')}</h2>
+            {WHY_US.map(({ key, emoji }) => (
+              <Card key={key}>
+                <CardContent className="py-4 space-y-1">
+                  <p className="font-bold">
+                    <span className="mr-2">{emoji}</span>
                     {t(`calc.${key}t` as DictKey)}
                   </p>
                   <p className="text-sm text-muted-foreground">{t(`calc.${key}b` as DictKey)}</p>
