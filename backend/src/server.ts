@@ -5,6 +5,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { isAddress, formatUnits } from "viem";
 import { config, USDT, CELO_NETWORK, USDT_EIP712 } from "./config.js";
 import { readPlan, readUserFunds, readFees, quoteUsdtToWbtc, sendExecute, btcSpotPriceUsdt } from "./chain.js";
+import { sendTelegram, telegramEnabled } from "./telegram.js";
 import * as db from "./db.js";
 
 export function buildServer() {
@@ -154,6 +155,21 @@ export function buildServer() {
       });
       await db.setPlanStatus(planRow.id, "active", nextRun(planRow));
 
+      // Alerta Telegram al usuario (si vinculó su chat)
+      if (telegramEnabled()) {
+        db.getTelegramChatByUserId(planRow.user_id)
+          .then((chatId) => {
+            if (!chatId) return;
+            const sats = Number(executed?.amountOut ?? quoted).toLocaleString("es-CO");
+            const usd = (Number(onchain.amountPerRun) / 1e6).toFixed(2);
+            return sendTelegram(
+              chatId,
+              `🟠 <b>CompraBTC</b>\nTu agente compró <b>${sats} sats</b> por $${usd} USDT.\n<a href="https://celoscan.io/tx/${hash}">Ver compra en Celoscan</a>`,
+            );
+          })
+          .catch((err) => console.warn("[telegram] notify failed:", err));
+      }
+
       return res.json({
         ok: true,
         tx: hash,
@@ -188,6 +204,62 @@ export function buildServer() {
     } catch (err) {
       console.error("[plans:post]", err);
       return res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ---------------------------------------------------- stats públicas
+  app.get("/api/stats", async (_req, res) => {
+    try {
+      const [stats, price, credits] = await Promise.all([
+        db.getGlobalStats(),
+        btcSpotPriceUsdt().catch(() => null),
+        fetch(`https://x402.celo.org/api/account?address=${config.payTo}`)
+          .then((r) => r.json())
+          .then((d: { balances?: { mainnet?: number } }) => d.balances?.mainnet ?? null)
+          .catch(() => null),
+      ]);
+      res.json({
+        ...stats,
+        btcPriceUsdt: price,
+        x402PaymentsSettled: credits != null ? 500 - credits : null,
+        x402CreditsRemaining: credits,
+      });
+    } catch (err) {
+      console.error("[stats]", err);
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ---------------------------------------------------- telegram webhook
+  app.post("/api/telegram/webhook", async (req, res) => {
+    res.json({ ok: true }); // responder rápido; Telegram reintenta si no
+    try {
+      if (req.headers["x-telegram-bot-api-secret-token"] !== config.telegramWebhookSecret) return;
+      const msg = req.body?.message;
+      const chatId = String(msg?.chat?.id ?? "");
+      const text = String(msg?.text ?? "");
+      if (!chatId || !text) return;
+
+      if (text === "/id") {
+        await sendTelegram(chatId, `Tu chat id es <code>${chatId}</code>`);
+        return;
+      }
+      // /start 0x... → vincular wallet a este chat
+      const wallet = text.startsWith("/start ") ? text.slice(7).trim().toLowerCase() : "";
+      if (isAddress(wallet)) {
+        await db.linkTelegram(wallet, chatId);
+        await sendTelegram(
+          chatId,
+          `✅ Listo. Te avisaré aquí cada vez que tu agente compre Bitcoin para <code>${wallet.slice(0, 8)}…</code>`,
+        );
+      } else if (text.startsWith("/start")) {
+        await sendTelegram(
+          chatId,
+          "Para vincular tus alertas, entra a comprabtc.vercel.app → Ajustes → Conectar Telegram.",
+        );
+      }
+    } catch (err) {
+      console.warn("[telegram] webhook error:", err);
     }
   });
 

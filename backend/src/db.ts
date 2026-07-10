@@ -110,6 +110,53 @@ export async function getExecutions(planId: string, limit = 50) {
   return data ?? [];
 }
 
+export async function linkTelegram(walletAddress: string, chatId: string) {
+  const { error } = await supabase
+    .from("agent_users")
+    .update({ telegram_chat_id: chatId })
+    .eq("wallet_address", walletAddress.toLowerCase());
+  if (error) throw error;
+}
+
+export async function getTelegramChatByUserId(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("agent_users")
+    .select("telegram_chat_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.telegram_chat_id as string | null) ?? null;
+}
+
+export interface GlobalStats {
+  totalPurchases: number;
+  totalVolumeUsdt: number; // unidades (6 dec)
+  totalSats: number;
+  activePlans: number;
+  totalUsers: number;
+}
+
+export async function getGlobalStats(): Promise<GlobalStats> {
+  const [{ data: execs }, { count: activePlans }, { count: totalUsers }] = await Promise.all([
+    supabase.from("agent_executions").select("usdt_in, wbtc_out").eq("status", "success"),
+    supabase.from("agent_plans").select("*", { count: "exact", head: true }).eq("status", "active"),
+    supabase.from("agent_users").select("*", { count: "exact", head: true }),
+  ]);
+  let volume = 0;
+  let sats = 0;
+  for (const row of execs ?? []) {
+    volume += Number(row.usdt_in ?? 0);
+    sats += Number(row.wbtc_out ?? 0);
+  }
+  return {
+    totalPurchases: (execs ?? []).length,
+    totalVolumeUsdt: volume,
+    totalSats: sats,
+    activePlans: activePlans ?? 0,
+    totalUsers: totalUsers ?? 0,
+  };
+}
+
 /** Costo promedio: total USDT gastado / total sats comprados (solo ejecuciones exitosas). */
 export async function getCostBasis(planId: string) {
   const { data, error } = await supabase

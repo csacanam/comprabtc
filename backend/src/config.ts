@@ -25,6 +25,12 @@ export const config = {
   port: Number(process.env.PORT ?? 8080),
   keeperIntervalMs: Number(process.env.KEEPER_INTERVAL_MS ?? 60_000),
   slippageBps: BigInt(process.env.SLIPPAGE_BPS ?? 100),
+
+  // Telegram (opcional — sin token, las alertas quedan desactivadas)
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+  telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "comprabtc-hook",
+  opsTelegramChatId: process.env.OPS_TELEGRAM_CHAT_ID ?? "",
+  publicUrl: process.env.PUBLIC_URL ?? "",
 } as const;
 
 // Direcciones canónicas en Celo mainnet (ver PLAN.md §2 — verificadas)

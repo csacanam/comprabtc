@@ -68,6 +68,11 @@ export default function LandingPage() {
                 {t('landing.cta')}
               </Button>
             </Link>
+            <Link href="/calc" className="block">
+              <Button fullWidth variant="outline">
+                {t('calc.title')}
+              </Button>
+            </Link>
           </div>
 
           {/* Nota de no-custodia */}
@@ -79,8 +84,11 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="px-6 py-4 border-t-3 border-foreground bg-secondary">
-        <div className="max-w-lg mx-auto text-center text-sm text-muted-foreground">
+        <div className="max-w-lg mx-auto text-center text-sm text-muted-foreground space-y-1">
           <p>{t('landing.footer')}</p>
+          <p>
+            <Link href="/stats" className="underline">{t('stats.title')}</Link>
+          </p>
         </div>
       </footer>
     </main>

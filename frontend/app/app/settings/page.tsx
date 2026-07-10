@@ -67,6 +67,24 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Alertas Telegram */}
+      {process.env.NEXT_PUBLIC_TELEGRAM_BOT && (
+        <Card>
+          <CardContent className="space-y-3">
+            <p className="font-bold text-sm">{t('settings.telegram')}</p>
+            <p className="text-sm text-muted-foreground">{t('settings.telegramBody')}</p>
+            <a
+              href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT}?start=${address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Button fullWidth variant="outline">{t('settings.telegramConnect')}</Button>
+            </a>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Plan */}
       <Card>
         <CardContent className="space-y-3">
