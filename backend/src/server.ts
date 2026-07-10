@@ -63,6 +63,33 @@ export function buildServer() {
     res.json({ ok: true, service: "comprabtc-backend" });
   });
 
+  // Descriptor del servicio para agentes: cómo usar CompraBTC sin permiso de nadie
+  app.get("/", (_req, res) => {
+    res.json({
+      name: "CompraBTC",
+      description:
+        "Autonomous Bitcoin DCA agent on Celo. Create a plan on-chain and the agent executes every installment for you: pulls USDT from your wallet within the limits you authorized, swaps to WBTC on Uniswap v3, and sends the Bitcoin straight back to your wallet.",
+      agentRegistry: "https://www.8004scan.io/agents/celo/9665",
+      howToUse: {
+        "1_create_plan_onchain": {
+          contract: config.executorAddress,
+          network: "eip155:42220",
+          steps: [
+            "USDT.approve(executor, totalBudget) — USDT: 0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+            "executor.createPlan(amountPerRun, minIntervalSeconds, tokenOut, poolFee) — MVP: tokenOut WBTC 0x8aC2901Dd8A1F17a1A4768A6bA4C3751e3995B2D, poolFee 3000",
+          ],
+          note: "That's it — the keeper discovers PlanCreated events and runs your plan automatically. Cancel anytime with executor.cancelPlan() or USDT.approve(executor, 0).",
+        },
+        "2_optional_trigger_execution": {
+          endpoint: "POST /api/execute { user } — x402 payment required",
+          note: "Permissionless fallback: anyone can pay to trigger a due installment (covers gas + settlement). The on-chain contract enforces amount and interval limits regardless of who pays.",
+        },
+        "3_read_state": { endpoint: "GET /api/plans/:address — free" },
+      },
+      fees: "On-chain, hard-capped in the verified contract: $0.005 + 1% per installment.",
+    });
+  });
+
   // ---------------------------------------------------- ejecución (pagada)
   // El agente/keeper paga x402 para llamar esto. Cualquiera que pague puede
   // invocarlo: el contrato igual hace cumplir active/intervalo/monto on-chain.
@@ -75,7 +102,12 @@ export function buildServer() {
       // lo sirve — cualquier agente que pague el x402 puede invocarlo, sin
       // registro previo (el plan se auto-registra en DB para el keeper).
       const onchain = await readPlan(user as `0x${string}`);
-      if (!onchain.active) return res.status(409).json({ error: "plan not active on-chain" });
+      if (!onchain.active) {
+        // cancelado on-chain (cancelPlan / approve(0) + inactivo): detener en DB
+        const stale = await db.getPlanByWallet(user);
+        if (stale && stale.status !== "stopped") await db.setPlanStatus(stale.id, "stopped");
+        return res.status(409).json({ error: "plan not active on-chain" });
+      }
 
       let planRow = await db.getPlanByWallet(user);
       if (!planRow) {

@@ -1,6 +1,17 @@
 export const dcaExecutorAbi = [
   {
     type: "event",
+    name: "PlanCreated",
+    inputs: [
+      { name: "user", type: "address", indexed: true },
+      { name: "amountPerRun", type: "uint128", indexed: false },
+      { name: "minInterval", type: "uint64", indexed: false },
+      { name: "tokenOut", type: "address", indexed: false },
+      { name: "poolFee", type: "uint24", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "Executed",
     inputs: [
       { name: "user", type: "address", indexed: true },

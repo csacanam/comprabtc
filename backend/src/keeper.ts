@@ -1,7 +1,7 @@
 import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm";
 import { config, CELO_NETWORK } from "./config.js";
-import { keeperAccount, btcSpotPriceUsdt } from "./chain.js";
+import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans } from "./chain.js";
 import * as db from "./db.js";
 
 // El agente: paga x402 con la wallet del keeper y llama la API de ejecución.
@@ -10,6 +10,7 @@ const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
 });
 
 let running = false;
+let lastScannedBlock = 0n;
 
 export function startKeeper() {
   console.log(`[keeper] agente iniciado — cada ${config.keeperIntervalMs / 1000}s, wallet ${keeperAccount.address}`);
@@ -17,10 +18,36 @@ export function startKeeper() {
   void tick();
 }
 
+/** Adopta planes creados directo en el contrato (sin pasar por nuestro API). */
+async function adoptOnchainPlans() {
+  const latest = await publicClient.getBlockNumber();
+  if (lastScannedBlock === 0n) lastScannedBlock = latest - 5000n; // ~80 min hacia atrás en el arranque
+  if (latest <= lastScannedBlock) return;
+
+  const created = await discoverPlans(lastScannedBlock + 1n, latest);
+  lastScannedBlock = latest;
+
+  for (const plan of created) {
+    const existing = await db.getPlanByWallet(plan.user);
+    if (existing) {
+      // recreación de plan: reactivar si estaba detenido, sin pisar su config off-chain
+      if (existing.status === "stopped") await db.setPlanStatus(existing.id, "active", new Date());
+      continue;
+    }
+    await db.upsertUserAndPlan({
+      walletAddress: plan.user,
+      amountPerRun: plan.amountPerRun,
+      frequencySeconds: plan.minInterval,
+    });
+    console.log(`[keeper] plan on-chain adoptado: ${plan.user} ($${plan.amountPerRun / 1e6} cada ${plan.minInterval}s)`);
+  }
+}
+
 async function tick() {
   if (running) return; // no solapar ciclos
   running = true;
   try {
+    await adoptOnchainPlans().catch((err) => console.warn("[keeper] discovery falló:", err?.message ?? err));
     const due = await db.getDuePlans();
     if (due.length > 0) console.log(`[keeper] ${due.length} plan(es) por ejecutar`);
 

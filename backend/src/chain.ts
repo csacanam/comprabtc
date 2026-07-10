@@ -94,6 +94,26 @@ export async function btcSpotPriceUsdt(): Promise<number> {
   return (100 * 1e8) / Number(sats);
 }
 
+/**
+ * Descubre planes creados on-chain (evento PlanCreated) desde `fromBlock`.
+ * Permite que cualquier wallet/agente cree su plan directo en el contrato
+ * sin tocar nuestro API: el keeper lo adopta solo.
+ */
+export async function discoverPlans(fromBlock: bigint, toBlock: bigint) {
+  const logs = await publicClient.getContractEvents({
+    address: config.executorAddress,
+    abi: dcaExecutorAbi,
+    eventName: "PlanCreated",
+    fromBlock,
+    toBlock,
+  });
+  return logs.map((log) => ({
+    user: (log.args.user as string).toLowerCase(),
+    minInterval: Number(log.args.minInterval),
+    amountPerRun: Number(log.args.amountPerRun),
+  }));
+}
+
 /** Envía execute(user, minOut) con el attribution tag anexado al calldata. */
 export async function sendExecute(user: `0x${string}`, minAmountOut: bigint) {
   const { request } = await publicClient.simulateContract({
