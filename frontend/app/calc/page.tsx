@@ -103,7 +103,7 @@ const WHY_EMOJI: Record<(typeof WHY_KEYS)[number], string> = {
 };
 
 export default function CalcPage() {
-  const { t, locale } = usePrefs();
+  const { t, locale, lang, setLang } = usePrefs();
   const [amount, setAmount] = useState(SUGGESTED_AMOUNTS[0]); // $0.1 por hora
   const [days, setDays] = useState<string>('1825'); // 5 años: el período que muestra la rentabilidad DCA
 
@@ -146,8 +146,15 @@ export default function CalcPage() {
   return (
     <main className="min-h-screen bg-background flex flex-col">
       <header className="px-6 py-4 border-b-3 border-foreground bg-card">
-        <div className="max-w-lg mx-auto">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
           <Link href="/" className="text-xl font-bold">CompraBTC</Link>
+          <button
+            type="button"
+            onClick={() => setLang(lang === 'es' ? 'en' : 'es')}
+            className="text-sm font-medium border-2 border-foreground px-2 py-0.5 bg-secondary hover:bg-muted transition-colors"
+          >
+            {lang === 'es' ? 'EN' : 'ES'}
+          </button>
         </div>
       </header>
 
