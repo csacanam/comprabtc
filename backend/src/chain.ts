@@ -18,8 +18,13 @@ export const walletClient = createWalletClient({
   transport: http(config.rpcUrl),
 });
 
-// Sufijo ERC-8021: se anexa al calldata de cada tx del keeper (Track 1)
-export const attributionSuffix = toDataSuffix(config.attributionCode) as Hex;
+// Sufijo ERC-8021: se anexa al calldata de cada tx del keeper (Track 1).
+// Soporta varios códigos separados por coma (ej. "comprabtc,celo_asignado") —
+// los programas solo acreditan SU código asignado; el nuestro mantiene analytics.
+const attributionCodes = config.attributionCode.split(",").map((c) => c.trim()).filter(Boolean);
+export const attributionSuffix = toDataSuffix(
+  attributionCodes.length === 1 ? attributionCodes[0] : attributionCodes,
+) as Hex;
 
 export interface OnChainPlan {
   amountPerRun: bigint;

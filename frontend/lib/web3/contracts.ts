@@ -19,12 +19,18 @@ export const SATS_PER_BTC = 100_000_000;
 // ===== ATTRIBUTION TAG (ERC-8021) =====
 // Se anexa como dataSuffix a las txs del usuario (approve + createPlan).
 // SSR-safe: solo se calcula en el browser.
+// Soporta varios códigos separados por coma (ej. "comprabtc,celo_asignado") —
+// los programas solo acreditan SU código asignado; el nuestro mantiene analytics.
 let cachedSuffix: Hex | null = null;
 export function attributionSuffix(): Hex | undefined {
   if (typeof window === 'undefined') return undefined;
   if (cachedSuffix) return cachedSuffix;
   try {
-    cachedSuffix = toDataSuffix(process.env.NEXT_PUBLIC_ATTRIBUTION_CODE ?? 'comprabtc') as Hex;
+    const codes = (process.env.NEXT_PUBLIC_ATTRIBUTION_CODE ?? 'comprabtc')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+    cachedSuffix = toDataSuffix(codes.length === 1 ? codes[0] : codes) as Hex;
     return cachedSuffix;
   } catch {
     return undefined;
