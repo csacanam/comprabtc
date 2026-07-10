@@ -50,7 +50,6 @@ export default function PlanPage() {
   const [amount, setAmount] = useState('');
   const [frequency, setFrequency] = useState<string>(FREQUENCIES[0]); // default = primera opción visible
   const [budgetRuns, setBudgetRuns] = useState('25');
-  const [stopLoss, setStopLoss] = useState('');
   const [error, setError] = useState('');
   const [step, setStep] = useState<'idle' | 'approving' | 'creating' | 'registering'>('idle');
 
@@ -78,7 +77,6 @@ export default function PlanPage() {
     amountNumber > 0 && (amountNumber < MIN_AMOUNT_USDT || amountNumber > MAX_AMOUNT_USDT)
       ? t('plan.amountError', { min: MIN_AMOUNT_USDT, max: MAX_AMOUNT_USDT })
       : '';
-  const stopLossNumber = parseFloat(stopLoss) || 0;
   const canSubmit =
     amountNumber >= MIN_AMOUNT_USDT && amountNumber <= MAX_AMOUNT_USDT && step === 'idle';
 
@@ -120,15 +118,16 @@ export default function PlanPage() {
         args: [amountPerRun, BigInt(frequency), WBTC, POOL_FEE],
         dataSuffix: suffix,
       });
-      await publicClient.waitForTransactionReceipt({ hash: createHash });
 
-      // 3. registrar en el backend para que el agente lo ejecute
+      // Con la tx enviada el plan ya es un hecho: lo que sigue es mejor-esfuerzo.
+      // El keeper descubre PlanCreated on-chain, así que si el RPC o el API
+      // fallan aquí NO se muestra error (era el "no se pudo crear" fantasma).
       setStep('registering');
+      await publicClient.waitForTransactionReceipt({ hash: createHash }).catch(() => {});
       await registerPlan({
         walletAddress: address,
         frequencySeconds: Number(frequency),
-        stopLossPct: stopLossNumber > 0 ? stopLossNumber : undefined,
-      });
+      }).catch(() => {});
 
       await refetchPlan();
       await queryClient.invalidateQueries({ queryKey: ['plan', address] });
@@ -281,17 +280,6 @@ export default function PlanPage() {
           onChange={(e) => setBudgetRuns(e.target.value)}
           options={budgetOptions}
           hint={t('plan.budgetHint')}
-        />
-
-        {/* Stop-loss opcional */}
-        <Input
-          label={t('plan.stopLossLabel')}
-          type="text"
-          inputMode="decimal"
-          placeholder="Ej: 15"
-          value={stopLoss}
-          onChange={(e) => setStopLoss(e.target.value.replace(/[^\d.]/g, ''))}
-          hint={t('plan.stopLossHint')}
         />
 
         {/* Resumen */}
