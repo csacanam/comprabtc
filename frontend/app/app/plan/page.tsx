@@ -17,23 +17,17 @@ import { Button, Input, Select, Card, CardContent, Badge } from '@/components/ne
 import {
   USDT, WBTC, POOL_FEE, EXECUTOR, erc20Abi, dcaExecutorAbi, attributionSuffix,
 } from '@/lib/web3/contracts';
+import {
+  FREQUENCIES, SUGGESTED_AMOUNTS, MIN_AMOUNT_USDT, MAX_AMOUNT_USDT,
+} from '@/lib/plan-config';
 import { usePrefs, type DictKey } from '@/lib/prefs';
 import { fetchPlan, registerPlan } from '@/services/api';
 
-// Frecuencias disponibles en el formulario (segundos → minInterval del contrato).
-// Etapa hackathon: solo las de alta frecuencia. DISPLAY incluye todas para
-// mostrar bien planes viejos.
-const FREQUENCIES = ['3600', '21600', '43200'] as const;
+// DISPLAY incluye frecuencias retiradas del formulario para mostrar bien planes viejos.
 const DISPLAY_FREQUENCIES = ['3600', '21600', '43200', '86400', '604800'];
-
-// Montos sugeridos por cuota (USDT)
-const suggestedAmounts = [0.1, 1, 5, 20];
 
 // Cuántas cuotas autoriza el approve (presupuesto = monto × cuotas)
 const BUDGET_RUNS = ['10', '25', '50'] as const;
-
-const MIN_AMOUNT_USDT = 0.1;
-const MAX_AMOUNT_USDT = 50; // etapa hackathon: tickets chicos y frecuentes (liquidez WBTC: PLAN.md §2.5)
 
 export default function PlanPage() {
   const router = useRouter();
@@ -254,7 +248,7 @@ export default function PlanPage() {
             hint={t('plan.amountHint', { min: MIN_AMOUNT_USDT, max: MAX_AMOUNT_USDT })}
           />
           <div className="flex flex-wrap gap-2">
-            {suggestedAmounts.map((suggested) => (
+            {SUGGESTED_AMOUNTS.map((suggested) => (
               <button
                 key={suggested}
                 type="button"

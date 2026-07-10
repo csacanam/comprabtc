@@ -1,78 +1,147 @@
 /**
- * CALCULADORA DCA (pública, adquisición)
- * =======================================
- * "¿Cuánto tendrías hoy si hubieras empezado a comprar poco a poco?"
- * Simula con precios históricos reales de Bitcoin (CoinGecko) en el browser.
+ * SIMULADOR DCA (público, adquisición)
+ * =====================================
+ * "¿Cuánto tendrías hoy si hubieras comprado poquito a poquito?"
+ * Carga sola una gráfica con precios históricos reales (Binance) y debajo
+ * explica en lenguaje sencillo por qué la gente guarda en Bitcoin.
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, CardContent, Input, Select } from '@/components/neo-brutal';
-import { usePrefs } from '@/lib/prefs';
+import { useQuery } from '@tanstack/react-query';
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+} from 'recharts';
+import { Button, Card, CardContent } from '@/components/neo-brutal';
+import { SUGGESTED_AMOUNTS } from '@/lib/plan-config';
+import { usePrefs, type DictKey } from '@/lib/prefs';
 
-interface Result {
-  invested: number;
-  sats: number;
-  worth: number;
-  purchases: number;
+// Períodos simulables (días). Años, no meses: el gancho es la rentabilidad
+// de largo plazo (el último año fue bajista y sale en rojo).
+const PERIODS = ['365', '1095', '1825'] as const;
+
+// Compra cada hora — la frecuencia estrella del plan real
+const FREQ_SECONDS = 3600;
+
+const DAY_MS = 86_400_000;
+
+// Color de la serie "lo que tendrías": naranja marca oscurecido para cumplir
+// contraste ≥3:1 sobre crema (#FFFEF5) y banda de luminosidad en modo oscuro
+// (validado con dataviz/validate_palette.js en ambos modos).
+const WORTH_COLOR = '#D97706';
+
+// Precios diarios [timestamp, close] desde Binance (historia completa, CORS
+// abierto, sin API key; 1000 velas por request → se pagina para 3-5 años).
+async function fetchBinanceDaily(days: number): Promise<[number, number][]> {
+  const end = Date.now();
+  let start = end - days * DAY_MS;
+  const out: [number, number][] = [];
+  while (start < end) {
+    const res = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${start}&limit=1000`,
+    );
+    if (!res.ok) throw new Error(`binance ${res.status}`);
+    const klines: [number, string, string, string, string][] = await res.json();
+    if (!klines.length) break;
+    for (const k of klines) out.push([k[0], Number(k[4])]);
+    start = klines[klines.length - 1][0] + DAY_MS;
+    if (klines.length < 1000) break;
+  }
+  return out;
 }
+
+// Respaldo si Binance falla (p. ej. bloqueo regional). La API pública de
+// CoinGecko solo entrega los últimos 365 días, así que se recorta el período.
+async function fetchCoinGeckoDaily(days: number): Promise<[number, number][]> {
+  const res = await fetch(
+    `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${Math.min(days, 365)}`,
+  );
+  if (!res.ok) throw new Error(`coingecko ${res.status}`);
+  const data: { prices: [number, number][] } = await res.json();
+  return data.prices ?? [];
+}
+
+interface Point {
+  ts: number;
+  invested: number;
+  worth: number;
+}
+
+// Simula compras de `perBuy` cada FREQ_SECONDS sobre los precios diarios.
+// Las compras intradía se ejecutan al cierre del día (aproximación DCA).
+function simulate(prices: [number, number][], perBuy: number) {
+  const stepMs = FREQ_SECONDS * 1000;
+  let sats = 0;
+  let purchases = 0;
+  let nextBuy = prices[0][0];
+  const series: Point[] = prices.map(([ts, price]) => {
+    while (ts >= nextBuy) {
+      sats += (perBuy / price) * 1e8;
+      purchases += 1;
+      nextBuy += stepMs;
+    }
+    return { ts, invested: purchases * perBuy, worth: (sats / 1e8) * price };
+  });
+  const last = series[series.length - 1];
+  return {
+    series,
+    sats: Math.round(sats),
+    purchases,
+    invested: last.invested,
+    worth: last.worth,
+  };
+}
+
+const WHY_KEYS = ['why1', 'why2', 'why3', 'why4'] as const;
+const WHY_EMOJI: Record<(typeof WHY_KEYS)[number], string> = {
+  why1: '🪙',
+  why2: '🔑',
+  why3: '🧘',
+  why4: '🛡️',
+};
 
 export default function CalcPage() {
   const { t, locale } = usePrefs();
-  const [amount, setAmount] = useState('20');
-  const [freq, setFreq] = useState<'weekly' | 'monthly'>('weekly');
-  const [years, setYears] = useState('3');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<Result | null>(null);
+  const [amount, setAmount] = useState(SUGGESTED_AMOUNTS[0]); // $0.1 por hora
+  const [days, setDays] = useState<string>('1825'); // 5 años: el período que muestra la rentabilidad DCA
 
   const usd = (n: number) =>
     n.toLocaleString(locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const usdCompact = (n: number) =>
+    n.toLocaleString(locale, {
+      style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1,
+    });
 
-  const calculate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const perBuy = parseFloat(amount) || 0;
-    if (perBuy <= 0) return;
-    setLoading(true);
-    setError('');
-    setResult(null);
-    try {
-      const days = Number(years) * 365;
-      const res = await fetch(
-        `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}&interval=daily`,
-      );
-      if (!res.ok) throw new Error(`coingecko ${res.status}`);
-      const data: { prices: [number, number][] } = await res.json();
-      const prices = data.prices;
-      if (!prices?.length) throw new Error('no prices');
+  const { data: prices, isLoading, isError } = useQuery({
+    queryKey: ['btc-daily', days],
+    queryFn: () => fetchBinanceDaily(Number(days)).catch(() => fetchCoinGeckoDaily(Number(days))),
+    staleTime: 60 * 60 * 1000,
+  });
 
-      const step = freq === 'weekly' ? 7 : 30;
-      let sats = 0;
-      let purchases = 0;
-      for (let i = 0; i < prices.length; i += step) {
-        const price = prices[i][1];
-        sats += (perBuy / price) * 1e8;
-        purchases += 1;
-      }
-      const lastPrice = prices[prices.length - 1][1];
-      setResult({
-        invested: purchases * perBuy,
-        sats: Math.round(sats),
-        worth: (sats / 1e8) * lastPrice,
-        purchases,
-      });
-    } catch (err) {
-      console.error(err);
-      setError(t('calc.error'));
-    } finally {
-      setLoading(false);
+  const result = useMemo(
+    () => (prices?.length ? simulate(prices, amount) : null),
+    [prices, amount],
+  );
+
+  // Muestreo para la gráfica (~180 puntos, siempre incluye el último)
+  const chartData = useMemo(() => {
+    if (!result) return [];
+    const { series } = result;
+    const step = Math.max(1, Math.ceil(series.length / 180));
+    const sampled = series.filter((_, i) => i % step === 0);
+    if (sampled[sampled.length - 1] !== series[series.length - 1]) {
+      sampled.push(series[series.length - 1]);
     }
-  };
+    return sampled;
+  }, [result]);
 
   const diff = result ? result.worth - result.invested : 0;
   const diffPct = result && result.invested > 0 ? (diff / result.invested) * 100 : 0;
+
+  const dateShort = (ts: number) =>
+    new Date(ts).toLocaleDateString(locale, { month: 'short', year: '2-digit' });
 
   return (
     <main className="min-h-screen bg-background flex flex-col">
@@ -89,55 +158,75 @@ export default function CalcPage() {
             <p className="text-muted-foreground">{t('calc.subtitle')}</p>
           </div>
 
-          <form onSubmit={calculate} className="space-y-4">
-            <Input
-              label={t('calc.amountLabel')}
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-            />
-            <Select
-              label={t('calc.freqLabel')}
-              value={freq}
-              onChange={(e) => setFreq(e.target.value as 'weekly' | 'monthly')}
-              options={[
-                { value: 'weekly', label: t('calc.freqWeekly') },
-                { value: 'monthly', label: t('calc.freqMonthly') },
-              ]}
-            />
-            <Select
-              label={t('calc.periodLabel')}
-              value={years}
-              onChange={(e) => setYears(e.target.value)}
-              options={[
-                { value: '1', label: t('calc.period1') },
-                { value: '3', label: t('calc.period3') },
-                { value: '5', label: t('calc.period5') },
-              ]}
-            />
-            <Button type="submit" fullWidth size="lg" isLoading={loading}>
-              {loading ? t('calc.loading') : t('calc.button')}
-            </Button>
-          </form>
+          {/* Controles: monto por hora + período */}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-sm font-bold">{t('calc.amountLabel')}</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTED_AMOUNTS.map((suggested) => (
+                  <button
+                    key={suggested}
+                    type="button"
+                    onClick={() => setAmount(suggested)}
+                    className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
+                      ${amount === suggested
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary hover:bg-muted'
+                      }`}
+                  >
+                    ${suggested}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-bold">{t('calc.periodLabel')}</p>
+              <div className="flex flex-wrap gap-2">
+                {PERIODS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDays(value)}
+                    className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
+                      ${days === value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary hover:bg-muted'
+                      }`}
+                  >
+                    {t(`calc.period${value}` as DictKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
-          {error && (
+          {isError && (
             <p className="text-sm font-medium text-destructive bg-destructive/10 px-4 py-3 border-2 border-destructive">
-              {error}
+              {t('calc.error')}
             </p>
+          )}
+
+          {isLoading && (
+            <div className="py-16 text-center">
+              <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="mt-4 text-sm text-muted-foreground">{t('calc.loading')}</p>
+            </div>
           )}
 
           {result && (
             <div className="space-y-3">
+              {/* Resultado principal */}
               <Card variant="primary">
                 <CardContent className="py-6 text-center space-y-2">
                   <p className="text-sm text-primary-foreground/80">{t('calc.wouldHave')}</p>
-                  <p className="text-3xl font-bold">{result.sats.toLocaleString(locale)} sats</p>
+                  <p className="text-3xl font-bold">{usd(result.worth)}</p>
                   <p className="text-sm text-primary-foreground/80">
-                    {t('calc.worth')}: <strong>{usd(result.worth)}</strong>
+                    {result.sats.toLocaleString(locale)} sats ·{' '}
+                    {t('calc.purchases', { n: result.purchases.toLocaleString(locale), amount: `$${amount}` })}
                   </p>
                 </CardContent>
               </Card>
+
               <div className="grid grid-cols-2 gap-3">
                 <Card>
                   <CardContent className="py-4">
@@ -154,11 +243,109 @@ export default function CalcPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Gráfica: lo que pusiste vs lo que tendrías */}
+              <Card>
+                <CardContent className="py-4 space-y-3">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-4 h-0.5" style={{ backgroundColor: WORTH_COLOR }} />
+                      <span className="text-muted-foreground">{t('calc.seriesWorth')}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block w-4 border-t-2 border-dashed"
+                        style={{ borderColor: 'var(--muted-foreground)' }}
+                      />
+                      <span className="text-muted-foreground">{t('calc.seriesInvested')}</span>
+                    </span>
+                  </div>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                        <CartesianGrid
+                          vertical={false}
+                          stroke="var(--muted-foreground)"
+                          strokeOpacity={0.15}
+                        />
+                        <XAxis
+                          dataKey="ts"
+                          tickFormatter={dateShort}
+                          tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                          tickLine={false}
+                          axisLine={{ stroke: 'var(--muted-foreground)', strokeOpacity: 0.3 }}
+                          minTickGap={40}
+                        />
+                        <YAxis
+                          tickFormatter={usdCompact}
+                          tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={48}
+                        />
+                        <Tooltip
+                          formatter={(value: number, name: string) => [
+                            usd(value),
+                            name === 'worth' ? t('calc.seriesWorth') : t('calc.seriesInvested'),
+                          ]}
+                          labelFormatter={(ts: number) =>
+                            new Date(ts).toLocaleDateString(locale, { dateStyle: 'medium' })
+                          }
+                          contentStyle={{
+                            backgroundColor: 'var(--card)',
+                            border: '2px solid var(--foreground)',
+                            borderRadius: 0,
+                            fontSize: 12,
+                          }}
+                        />
+                        {/* Referencia: lo acumulado que pusiste (punteada, tinta muted) */}
+                        <Line
+                          type="monotone"
+                          dataKey="invested"
+                          stroke="var(--muted-foreground)"
+                          strokeWidth={2}
+                          strokeDasharray="6 4"
+                          dot={false}
+                          activeDot={{ r: 4 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="worth"
+                          stroke={WORTH_COLOR}
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 4 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Link href="/app" className="block">
                 <Button fullWidth size="lg" variant="secondary">{t('calc.cta')}</Button>
               </Link>
             </div>
           )}
+
+          {/* ¿Por qué Bitcoin? — en lenguaje sencillo */}
+          <div className="space-y-3 pt-4">
+            <h2 className="text-xl font-bold">{t('calc.whyTitle')}</h2>
+            {WHY_KEYS.map((key) => (
+              <Card key={key}>
+                <CardContent className="py-4 space-y-1">
+                  <p className="font-bold">
+                    <span className="mr-2">{WHY_EMOJI[key]}</span>
+                    {t(`calc.${key}t` as DictKey)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{t(`calc.${key}b` as DictKey)}</p>
+                </CardContent>
+              </Card>
+            ))}
+            <Link href="/app" className="block pt-1">
+              <Button fullWidth size="lg">{t('calc.cta')}</Button>
+            </Link>
+          </div>
 
           <p className="text-xs text-muted-foreground">{t('calc.disclaimer')}</p>
         </div>
