@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { Button } from '@/components/neo-brutal';
+import { isMiniPay } from '@/lib/web3/config';
 import { usePrefs } from '@/lib/prefs';
 
 export default function LandingPage() {
@@ -19,10 +20,10 @@ export default function LandingPage() {
   const { isConnected } = useAccount();
   const { t } = usePrefs();
 
-  // Si ya está conectado (p. ej. dentro de MiniPay), ir directo a la app
+  // Conectado o dentro de MiniPay (auto-connect en curso): directo a la app
   useEffect(() => {
-    if (isConnected) {
-      router.push('/app');
+    if (isConnected || isMiniPay()) {
+      router.replace('/app');
     }
   }, [isConnected, router]);
 

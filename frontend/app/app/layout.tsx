@@ -79,8 +79,9 @@ export default function DashboardLayout({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Pantalla de conexión (no aplica dentro de MiniPay: auto-connect)
-  if (!mounted || (!isConnected && (isConnecting || isPending))) {
+  // Pantalla de conexión. Dentro de MiniPay el auto-connect (Web3Provider)
+  // conecta solo — mientras tanto mostramos el spinner, nunca un botón.
+  if (!mounted || (!isConnected && (isConnecting || isPending || isMiniPay()))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

@@ -21,9 +21,27 @@ function MiniPayAutoConnect() {
   const { isConnected } = useAccount();
 
   useEffect(() => {
-    if (!isConnected && isMiniPay()) {
-      connect({ connector: injected({ target: 'metaMask' }) });
-    }
+    if (isConnected) return;
+
+    // MiniPay puede inyectar window.ethereum después del primer render:
+    // reintentar durante ~3s hasta encontrar el provider.
+    let cancelled = false;
+    let retriesLeft = 12;
+
+    const tryConnect = () => {
+      if (cancelled) return;
+      if (isMiniPay()) {
+        // MiniPay se presenta como MetaMask — patrón oficial de los docs
+        connect({ connector: injected({ target: 'metaMask' }) });
+      } else if (retriesLeft-- > 0) {
+        setTimeout(tryConnect, 250);
+      }
+    };
+    tryConnect();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isConnected, connect]);
 
   return null;
