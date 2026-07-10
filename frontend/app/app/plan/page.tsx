@@ -70,7 +70,10 @@ export default function PlanPage() {
     refetchInterval: 30_000,
   });
 
-  const isActive = onchainPlan?.[3] === true;
+  // Optimista: con la tx de cancelación enviada el plan ya es historia,
+  // aunque el RPC público tarde en reflejar active=false.
+  const [cancelled, setCancelled] = useState(false);
+  const isActive = onchainPlan?.[3] === true && !cancelled;
 
   const amountNumber = parseFloat(amount) || 0;
   const amountError =
@@ -153,8 +156,15 @@ export default function PlanPage() {
         functionName: 'cancelPlan',
         dataSuffix: attributionSuffix(),
       });
-      await publicClient.waitForTransactionReceipt({ hash });
-      await refetchPlan();
+      // Tx enviada → reflejar ya el estado en la UI; el resto es mejor-esfuerzo
+      setCancelled(true);
+      await publicClient.waitForTransactionReceipt({ hash }).catch(() => {});
+      // forno balancea nodos y puede devolver estado viejo: reintentar el read
+      for (let i = 0; i < 5; i++) {
+        const { data } = await refetchPlan();
+        if (data?.[3] === false) break;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
       await queryClient.invalidateQueries({ queryKey: ['plan', address] });
     } catch (err) {
       console.error(err);
