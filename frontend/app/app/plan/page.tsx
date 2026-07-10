@@ -9,7 +9,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { parseUnits, formatUnits } from 'viem';
@@ -30,7 +29,6 @@ const DISPLAY_FREQUENCIES = ['3600', '21600', '43200', '86400', '604800'];
 const BUDGET_RUNS = ['10', '25', '50'] as const;
 
 export default function PlanPage() {
-  const router = useRouter();
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -59,7 +57,8 @@ export default function PlanPage() {
     abi: dcaExecutorAbi,
     functionName: 'plans',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    // refresco suave como red de seguridad si un nodo respondió con estado viejo
+    query: { enabled: !!address, refetchInterval: 15_000 },
   });
 
   // Fees reales del contrato (para mostrar la comisión sin hardcodear)
@@ -163,9 +162,15 @@ export default function PlanPage() {
         frequencySeconds: Number(frequency),
       }).catch(() => {});
 
-      await refetchPlan();
+      // Quedarse aquí mostrando el plan creado (no ir al home). Reintentar el
+      // read hasta que el nodo refleje active=true (forno balancea nodos).
+      setCancelled(false);
+      for (let i = 0; i < 5; i++) {
+        const { data } = await refetchPlan();
+        if (data?.[3] === true) break;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
       await queryClient.invalidateQueries({ queryKey: ['plan', address] });
-      router.push('/app');
     } catch (err) {
       console.error(err);
       setError(t('plan.submitError'));
