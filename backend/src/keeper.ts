@@ -86,20 +86,35 @@ async function opsMonitor() {
       const settles = credits != null ? 500 - credits : null;
       const creditCost = settles != null ? settles * 0.001 : null;
       const keeperBtcUsd = price != null ? (Number(keeperSats) / 1e8) * price : null;
+
+      // Semáforo por saldo: 🚨 bajo el mínimo operativo, ⚠️ cerca (2x), ✅ ok
+      const level = (value: number, min: number) =>
+        value < min ? "🚨" : value < min * 2 ? "⚠️" : "✅";
+
       const pnlBlock = pnl
         ? `\n💰 <b>P&L</b>\n` +
-          `Ingreso real (fees de usuarios): <b>$${(pnl.externalFees / 1e6).toFixed(3)}</b>\n` +
-          `Circular (keeper→nosotros, no es ingreso): $${(pnl.circularFees / 1e6).toFixed(3)} fees + $${settles != null ? (settles * 0.02).toFixed(2) : "?"} x402\n` +
-          `Costos reales: créditos ~$${creditCost?.toFixed(3) ?? "?"} + gas (CELO)\n` +
-          `Posiciones: treasury <b>$${(Number(treasuryUsdt) / 1e6).toFixed(2)} USDT</b> · keeper <b>$${usdt.toFixed(2)} USDT</b> + <b>${Number(keeperSats).toLocaleString("es-CO")} sats</b>${keeperBtcUsd != null ? ` (~$${keeperBtcUsd.toFixed(2)})` : ""}`
+          `Ingreso real (comisiones de usuarios): <b>$${(pnl.externalFees / 1e6).toFixed(3)} USDT</b>\n` +
+          `Circular (keeper→nosotros, no es ingreso): $${(pnl.circularFees / 1e6).toFixed(3)} comisiones + $${settles != null ? (settles * 0.02).toFixed(2) : "?"} x402\n` +
+          `Costos: créditos x402 ~$${creditCost?.toFixed(3) ?? "?"} + gas en CELO\n`
         : "";
+
+      const balancesBlock =
+        `\n💳 <b>Saldos y niveles</b>\n` +
+        `💵 Treasury (ingresos, USDT): <b>$${(Number(treasuryUsdt) / 1e6).toFixed(2)}</b>\n` +
+        `${level(celo, 0.2)} Keeper CELO (gas): <b>${celo.toFixed(3)}</b> · mín 0.2\n` +
+        `${level(usdt, 2)} Keeper USDT (paga x402): <b>$${usdt.toFixed(2)}</b> · mín $2\n` +
+        `${credits != null ? level(credits, 100) : "❔"} Créditos x402: <b>${credits ?? "?"}</b> · mín 100\n` +
+        `₿ Keeper sats (su plan demo, no es ingreso): <b>${Number(keeperSats).toLocaleString("es-CO")}</b>${keeperBtcUsd != null ? ` (~$${keeperBtcUsd.toFixed(2)})` : ""}`;
+
       await sendOps(
-        `📊 <b>CompraBTC digest</b>\n` +
-          `Compras: <b>${stats.totalPurchases}</b> · Volumen: <b>$${(stats.totalVolumeUsdt / 1e6).toFixed(2)}</b> · Sats usuarios: <b>${stats.totalSats.toLocaleString("es-CO")}</b>\n` +
+        `📊 <b>CompraBTC digest</b>\n\n` +
+          `💼 <b>Negocio</b>\n` +
+          `Compras: <b>${stats.totalPurchases}</b> · Volumen: <b>$${(stats.totalVolumeUsdt / 1e6).toFixed(2)}</b>\n` +
           `Planes activos: <b>${stats.activePlans}</b> · Usuarios: <b>${stats.totalUsers}</b>\n` +
-          `x402 liquidados: <b>${settles ?? "?"}</b> · Créditos: <b>${credits ?? "?"}</b>\n` +
-          `Keeper: <b>${celo.toFixed(3)} CELO</b>` +
-          pnlBlock,
+          `Sats acumulados por usuarios: <b>${stats.totalSats.toLocaleString("es-CO")}</b>\n` +
+          `x402 liquidados: <b>${settles ?? "?"}</b>\n` +
+          pnlBlock +
+          balancesBlock,
       );
     }
   }
