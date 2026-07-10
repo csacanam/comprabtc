@@ -54,7 +54,7 @@ export default function PlanPage() {
 
   // Estado del formulario
   const [amount, setAmount] = useState('');
-  const [frequency, setFrequency] = useState('86400');
+  const [frequency, setFrequency] = useState<string>(FREQUENCIES[0]); // default = primera opción visible
   const [budgetRuns, setBudgetRuns] = useState('25');
   const [stopLoss, setStopLoss] = useState('');
   const [error, setError] = useState('');
