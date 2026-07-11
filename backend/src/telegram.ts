@@ -53,6 +53,8 @@ export const userMessages = {
       "⚠️ <b>CompraBTC</b>\nTu cuota se saltó: no había USDT suficiente en tu billetera. Agrega USDT y el agente retoma solo en la próxima cuota.",
     skippedNoAllowance:
       "⚠️ <b>CompraBTC</b>\nTu cuota se saltó: el presupuesto que autorizaste ya se usó completo. Entra a la app → Mi plan y autoriza más cuotas para que el agente siga comprando.",
+    budgetLow:
+      "🔔 <b>CompraBTC</b>\nQuedan solo <b>3 cuotas</b> de tu presupuesto autorizado. Renueva en la app → Mi plan para que el agente no se detenga.",
   },
   en: {
     linked: (w: string) =>
@@ -67,6 +69,8 @@ export const userMessages = {
       "⚠️ <b>CompraBTC</b>\nYour installment was skipped: not enough USDT in your wallet. Add USDT and the agent resumes on the next installment automatically.",
     skippedNoAllowance:
       "⚠️ <b>CompraBTC</b>\nYour installment was skipped: the budget you authorized is fully used. Open the app → My plan and authorize more installments so the agent can keep buying.",
+    budgetLow:
+      "🔔 <b>CompraBTC</b>\nOnly <b>3 installments</b> left in your authorized budget. Renew in the app → My plan so the agent doesn't stop.",
   },
 } as const satisfies Record<UserLang, unknown>;
 

@@ -171,15 +171,19 @@ export function buildServer() {
       });
       await db.setPlanStatus(planRow.id, "active", nextRun(planRow));
 
-      // Alerta Telegram al usuario (si vinculó su chat), en su idioma
+      // Alerta Telegram al usuario (si vinculó su chat), en su idioma.
+      // Además, aviso preventivo único cuando tras esta compra quedan
+      // exactamente 3 cuotas del presupuesto (baja de a 1 → dispara una vez).
       if (telegramEnabled()) {
+        const runsLeftAfter = Number((allowance - onchain.amountPerRun) / onchain.amountPerRun);
         db.getTelegramByUserId(planRow.user_id)
-          .then((link) => {
+          .then(async (link) => {
             if (!link) return;
             const lang = normalizeLang(link.lang);
             const sats = Number(executed?.amountOut ?? quoted).toLocaleString(lang === "es" ? "es-CO" : "en-US");
             const usd = (Number(onchain.amountPerRun) / 1e6).toFixed(2);
-            return sendTelegram(link.chatId, userMessages[lang].purchase(sats, usd, hash));
+            await sendTelegram(link.chatId, userMessages[lang].purchase(sats, usd, hash));
+            if (runsLeftAfter === 3) await sendTelegram(link.chatId, userMessages[lang].budgetLow);
           })
           .catch((err) => console.warn("[telegram] notify failed:", err));
       }
