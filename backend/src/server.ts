@@ -332,17 +332,12 @@ export function buildServer() {
 }
 
 function nextRun(plan: db.PlanRow): Date {
-  // Fase estable por plan: avanza desde el next_run_at anterior en pasos
-  // exactos del intervalo (un plan de "las y 15" sigue en "las y 15" aunque
-  // el keeper haya estado caído). El contrato exige lastRun + minInterval,
-  // así que el siguiente slot debe quedar al menos un intervalo completo
-  // después de esta ejecución — si no alcanza, se corre al siguiente.
-  const intervalMs = plan.frequency_seconds * 1000;
-  const now = Date.now();
-  let next = new Date(plan.next_run_at).getTime();
-  if (!Number.isFinite(next) || next <= 0) next = now;
-  while (next < now + intervalMs) next += intervalMs;
-  return new Date(next);
+  // Ancla por ejecución (= reloj del contrato: lastRun + minInterval).
+  // Mantener una fase de reloj fija ("siempre a las y 15") pelea contra ese
+  // ancla y cuesta compras saltadas o reintentos x402 — se prefiere maximizar
+  // el número de compras. Efecto cosmético aceptado: si el keeper estuvo
+  // caído, los planes vencidos se ejecutan juntos y quedan en fase similar.
+  return new Date(Date.now() + plan.frequency_seconds * 1000);
 }
 
 function serialize(obj: Record<string, unknown>) {
