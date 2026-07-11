@@ -30,6 +30,8 @@ export const config = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "comprabtc-hook",
   opsTelegramChatId: process.env.OPS_TELEGRAM_CHAT_ID ?? "",
+  // Bot separado para ops (opcional): si no se define, usa el bot principal
+  opsTelegramBotToken: process.env.OPS_TELEGRAM_BOT_TOKEN ?? "",
   publicUrl: process.env.PUBLIC_URL ?? "",
 } as const;
 

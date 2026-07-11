@@ -9,16 +9,16 @@
 
 import { config } from "./config.js";
 
-const API = () => `https://api.telegram.org/bot${config.telegramBotToken}`;
+const API = (token = config.telegramBotToken) => `https://api.telegram.org/bot${token}`;
 
 export function telegramEnabled(): boolean {
   return Boolean(config.telegramBotToken);
 }
 
-export async function sendTelegram(chatId: string, text: string): Promise<void> {
+export async function sendTelegram(chatId: string, text: string, token?: string): Promise<void> {
   if (!telegramEnabled()) return;
   try {
-    await fetch(`${API()}/sendMessage`, {
+    await fetch(`${API(token)}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
@@ -28,8 +28,10 @@ export async function sendTelegram(chatId: string, text: string): Promise<void> 
   }
 }
 
+/** Mensajes de operación: van por el bot de ops si está configurado (OPS_TELEGRAM_BOT_TOKEN). */
 export async function sendOps(text: string): Promise<void> {
-  if (config.opsTelegramChatId) await sendTelegram(config.opsTelegramChatId, text);
+  if (!config.opsTelegramChatId) return;
+  await sendTelegram(config.opsTelegramChatId, text, config.opsTelegramBotToken || undefined);
 }
 
 /** Registra el webhook del bot apuntando a nuestra URL pública. */

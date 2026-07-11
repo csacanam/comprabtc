@@ -25,8 +25,10 @@ import { fetchPlan, registerPlan } from '@/services/api';
 // DISPLAY incluye frecuencias retiradas del formulario para mostrar bien planes viejos.
 const DISPLAY_FREQUENCIES = ['3600', '21600', '43200', '86400', '604800'];
 
-// Cuántas cuotas autoriza el approve (presupuesto = monto × cuotas)
-const BUDGET_RUNS = ['10', '25', '50'] as const;
+// Cuotas sugeridas para el approve (presupuesto = monto × cuotas); también se puede escribir
+const SUGGESTED_RUNS = [25, 50, 100, 200];
+const MIN_RUNS = 1;
+const MAX_RUNS = 1000;
 
 export default function PlanPage() {
   const { address } = useAccount();
@@ -38,10 +40,6 @@ export default function PlanPage() {
   const frequencyOptions = FREQUENCIES.map((value) => ({
     value,
     label: t(`freq.${value}` as DictKey),
-  }));
-  const budgetOptions = BUDGET_RUNS.map((value) => ({
-    value,
-    label: t('plan.budgetOption', { n: value }),
   }));
 
   // Estado del formulario
@@ -110,8 +108,31 @@ export default function PlanPage() {
         }) ?? null
       : null;
   const tipPct = tipAmount != null ? ((feeFor(tipAmount)! / tipAmount) * 100) : null;
+
+  // Cuotas autorizadas: número libre dentro de límites sanos
+  const runsNumber = parseInt(budgetRuns, 10) || 0;
+  const runsError =
+    runsNumber > 0 && (runsNumber < MIN_RUNS || runsNumber > MAX_RUNS)
+      ? t('plan.budgetError', { min: MIN_RUNS, max: MAX_RUNS })
+      : '';
+
+  // Saldo USDT actual: informativo, no bloquea — la plata puede ir llegando
+  // (si una cuota no encuentra saldo, el agente la salta y sigue en la próxima).
+  const { data: usdtBalance } = useReadContract({
+    address: USDT,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address, refetchInterval: 30_000 },
+  });
+  const balanceUsdt = usdtBalance != null ? Number(formatUnits(usdtBalance, 6)) : null;
+  const budgetUsdt = amountNumber * runsNumber;
+  const coveredRuns =
+    balanceUsdt != null && amountNumber > 0 ? Math.floor(balanceUsdt / amountNumber) : null;
+
   const canSubmit =
-    amountNumber >= MIN_AMOUNT_USDT && amountNumber <= MAX_AMOUNT_USDT && step === 'idle';
+    amountNumber >= MIN_AMOUNT_USDT && amountNumber <= MAX_AMOUNT_USDT &&
+    runsNumber >= MIN_RUNS && runsNumber <= MAX_RUNS && step === 'idle';
 
   const isLoading = step !== 'idle';
   const loadingLabel =
@@ -336,14 +357,46 @@ export default function PlanPage() {
           hint={t('plan.frequencyHint')}
         />
 
-        {/* Presupuesto autorizado */}
-        <Select
-          label={t('plan.budgetLabel')}
-          value={budgetRuns}
-          onChange={(e) => setBudgetRuns(e.target.value)}
-          options={budgetOptions}
-          hint={t('plan.budgetHint')}
-        />
+        {/* Presupuesto autorizado: número libre de cuotas + sugerencias */}
+        <div className="space-y-3">
+          <Input
+            label={t('plan.budgetLabel')}
+            type="text"
+            inputMode="numeric"
+            placeholder="Ej: 100"
+            value={budgetRuns}
+            onChange={(e) => setBudgetRuns(e.target.value.replace(/[^\d]/g, ''))}
+            error={runsError}
+            hint={t('plan.budgetHint')}
+          />
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_RUNS.map((runs) => (
+              <button
+                key={runs}
+                type="button"
+                onClick={() => setBudgetRuns(runs.toString())}
+                className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
+                  ${runsNumber === runs
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary hover:bg-muted'
+                  }`}
+              >
+                {t('plan.budgetOption', { n: runs })}
+              </button>
+            ))}
+          </div>
+
+          {/* Saldo actual vs presupuesto: informa, no bloquea */}
+          {balanceUsdt != null && amountNumber > 0 && runsNumber > 0 && !runsError && !amountError && (
+            <p className="text-sm text-muted-foreground">
+              {balanceUsdt >= budgetUsdt
+                ? t('plan.balanceOk', { balance: balanceUsdt.toFixed(2) })
+                : coveredRuns != null && coveredRuns > 0
+                  ? t('plan.balancePartial', { balance: balanceUsdt.toFixed(2), runs: coveredRuns })
+                  : t('plan.balanceNone')}
+            </p>
+          )}
+        </div>
 
         {/* Resumen */}
         {canSubmit && (
