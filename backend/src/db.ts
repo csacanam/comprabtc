@@ -111,11 +111,24 @@ export async function getExecutions(planId: string, limit = 50) {
 }
 
 export async function linkTelegram(walletAddress: string, chatId: string) {
+  // upsert: permite vincular Telegram aunque el usuario aún no haya creado plan
   const { error } = await supabase
     .from("agent_users")
-    .update({ telegram_chat_id: chatId })
-    .eq("wallet_address", walletAddress.toLowerCase());
+    .upsert(
+      { wallet_address: walletAddress.toLowerCase(), telegram_chat_id: chatId },
+      { onConflict: "wallet_address" },
+    );
   if (error) throw error;
+}
+
+export async function getTelegramChatByWallet(walletAddress: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("agent_users")
+    .select("telegram_chat_id")
+    .eq("wallet_address", walletAddress.toLowerCase())
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.telegram_chat_id as string | null) ?? null;
 }
 
 export async function getTelegramChatByUserId(userId: string): Promise<string | null> {

@@ -48,6 +48,21 @@ export async function fetchPlan(address: string): Promise<PlanResponse | null> {
   return res.json();
 }
 
+export async function fetchTelegramStatus(address: string): Promise<{ linked: boolean }> {
+  const res = await fetch(`${API_URL}/api/telegram/status/${address}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+export async function sendTelegramTest(walletAddress: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/telegram/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
 export async function registerPlan(input: {
   walletAddress: string;
   frequencySeconds: number;

@@ -263,6 +263,30 @@ export function buildServer() {
     }
   });
 
+  // ¿Esta wallet ya tiene Telegram vinculado? (para mostrar estado en la app)
+  app.get("/api/telegram/status/:address", async (req, res) => {
+    const address = String(req.params.address ?? "");
+    if (!isAddress(address)) return res.status(400).json({ error: "invalid address" });
+    const chat = await db.getTelegramChatByWallet(address).catch(() => null);
+    return res.json({ linked: Boolean(chat) });
+  });
+
+  // Mensaje de prueba al chat vinculado (cooldown 60s por wallet)
+  const lastTelegramTestAt = new Map<string, number>();
+  app.post("/api/telegram/test", async (req, res) => {
+    const address = String(req.body?.walletAddress ?? "").toLowerCase();
+    if (!isAddress(address)) return res.status(400).json({ error: "invalid walletAddress" });
+    const chat = await db.getTelegramChatByWallet(address).catch(() => null);
+    if (!chat) return res.status(404).json({ linked: false, error: "telegram not linked" });
+    const now = Date.now();
+    if (now - (lastTelegramTestAt.get(address) ?? 0) < 60_000) {
+      return res.status(429).json({ error: "wait a minute between tests" });
+    }
+    lastTelegramTestAt.set(address, now);
+    await sendTelegram(chat, "👋 Prueba de CompraBTC: por aquí te avisaré cada vez que tu agente compre Bitcoin.");
+    return res.json({ sent: true });
+  });
+
   app.get("/api/plans/:address", async (req, res) => {
     try {
       const address = req.params.address;
