@@ -61,6 +61,12 @@ export async function getDuePlans(): Promise<PlanRow[]> {
   return (data ?? []) as PlanRow[];
 }
 
+export async function getAllPlans(): Promise<PlanRow[]> {
+  const { data, error } = await supabase.from("agent_plans").select("*");
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function getPlanByWallet(walletAddress: string): Promise<PlanRow | null> {
   const { data, error } = await supabase
     .from("agent_plans")

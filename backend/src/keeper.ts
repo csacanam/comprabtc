@@ -13,6 +13,39 @@ const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
 
 let running = false;
 let lastScannedBlock = 0n;
+let reconciled = false;
+
+/**
+ * Reconciliación al arrancar: la DB puede quedar desactualizada frente al
+ * contrato (ediciones/cancelaciones fuera de la ventana de escaneo de eventos).
+ * Una vez por boot, sincroniza monto/frecuencia/estado de cada plan con on-chain.
+ */
+async function reconcilePlansWithChain() {
+  const plans = await db.getAllPlans();
+  for (const plan of plans) {
+    try {
+      const onchain = await readPlan(plan.wallet_address as `0x${string}`);
+      if (!onchain.active) {
+        if (plan.status !== "stopped") {
+          await db.setPlanStatus(plan.id, "stopped");
+          console.log(`[keeper] reconciliado (detenido on-chain): ${plan.wallet_address}`);
+        }
+        continue;
+      }
+      const changed =
+        plan.amount_per_run !== Number(onchain.amountPerRun) ||
+        plan.frequency_seconds !== Number(onchain.minInterval);
+      if (changed || plan.status === "stopped") {
+        await db.reactivatePlan(plan.id, Number(onchain.amountPerRun), Number(onchain.minInterval));
+        console.log(
+          `[keeper] reconciliado: ${plan.wallet_address} → $${Number(onchain.amountPerRun) / 1e6} cada ${Number(onchain.minInterval)}s`,
+        );
+      }
+    } catch (err) {
+      console.warn(`[keeper] reconcile falló para ${plan.wallet_address}:`, (err as Error)?.message ?? err);
+    }
+  }
+}
 
 export function startKeeper() {
   console.log(`[keeper] agente iniciado — cada ${config.keeperIntervalMs / 1000}s, wallet ${keeperAccount.address}`);
@@ -131,6 +164,10 @@ async function tick() {
   if (running) return; // no solapar ciclos
   running = true;
   try {
+    if (!reconciled) {
+      reconciled = true;
+      await reconcilePlansWithChain().catch((err) => console.warn("[keeper] reconcile falló:", err?.message ?? err));
+    }
     await adoptOnchainPlans().catch((err) => console.warn("[keeper] discovery falló:", err?.message ?? err));
     await opsMonitor().catch((err) => console.warn("[keeper] ops monitor falló:", err?.message ?? err));
     const due = await db.getDuePlans();
