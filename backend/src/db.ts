@@ -71,6 +71,21 @@ export async function getPlanByWallet(walletAddress: string): Promise<PlanRow | 
   return data as PlanRow | null;
 }
 
+/** Reactiva un plan recreado on-chain: sincroniza config del evento y arranca ya. */
+export async function reactivatePlan(planId: string, amountPerRun: number, frequencySeconds: number) {
+  const { error } = await supabase
+    .from("agent_plans")
+    .update({
+      status: "active",
+      amount_per_run: amountPerRun,
+      frequency_seconds: frequencySeconds,
+      next_run_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", planId);
+  if (error) throw error;
+}
+
 export async function setPlanStatus(planId: string, status: string, nextRunAt?: Date) {
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
   if (nextRunAt) patch.next_run_at = nextRunAt.toISOString();

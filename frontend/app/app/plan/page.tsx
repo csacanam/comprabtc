@@ -178,10 +178,16 @@ export default function PlanPage() {
       // fallan aquí NO se muestra error (era el "no se pudo crear" fantasma).
       setStep('registering');
       await publicClient.waitForTransactionReceipt({ hash: createHash }).catch(() => {});
-      await registerPlan({
-        walletAddress: address,
-        frequencySeconds: Number(frequency),
-      }).catch(() => {});
+      // el API valida el plan on-chain con su propio nodo, que puede ir atrasado
+      // unos segundos → reintentar; si igual falla, el keeper lo adopta solo
+      for (let i = 0; i < 3; i++) {
+        const ok = await registerPlan({
+          walletAddress: address,
+          frequencySeconds: Number(frequency),
+        }).then(() => true).catch(() => false);
+        if (ok) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
 
       // Quedarse aquí mostrando el plan creado (no ir al home). Reintentar el
       // read hasta que el nodo refleje active=true (forno balancea nodos).
@@ -264,7 +270,9 @@ export default function PlanPage() {
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-primary-foreground/80">{t('plan.nextRun')}</span>
                 <span className="font-bold">
-                  {nextRunAt ? nextRunAt.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : t('plan.soon')}
+                  {nextRunAt && nextRunAt.getTime() > Date.now()
+                    ? nextRunAt.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
+                    : t('plan.soon')}
                 </span>
               </div>
             </div>
