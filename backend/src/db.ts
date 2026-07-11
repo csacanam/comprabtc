@@ -114,6 +114,18 @@ export async function recordExecution(input: {
   if (error) throw error;
 }
 
+/** Página de historial (más recientes primero) + total para paginar en la UI. */
+export async function getExecutionsPage(planId: string, offset: number, limit: number) {
+  const { data, error, count } = await supabase
+    .from("agent_executions")
+    .select("*", { count: "exact" })
+    .eq("plan_id", planId)
+    .order("run_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+  return { rows: data ?? [], total: count ?? 0 };
+}
+
 export async function getExecutions(planId: string, limit = 50) {
   const { data, error } = await supabase
     .from("agent_executions")

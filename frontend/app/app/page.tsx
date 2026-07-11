@@ -10,12 +10,12 @@
 import React from 'react';
 import Link from 'next/link';
 import { useAccount, useReadContract } from 'wagmi';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { formatUnits } from 'viem';
 import { Button, Card, CardContent, Badge } from '@/components/neo-brutal';
 import { USDT, WBTC, EXECUTOR, erc20Abi, dcaExecutorAbi, SATS_PER_BTC } from '@/lib/web3/contracts';
 import { usePrefs, formatBtcAmount, type DictKey } from '@/lib/prefs';
-import { fetchPlan, type ExecutionRow } from '@/services/api';
+import { fetchPlan, fetchExecutions, type ExecutionRow } from '@/services/api';
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
   success: 'success',
@@ -62,22 +62,42 @@ export default function DashboardPage() {
     refetchInterval: 30_000,
   });
 
+  // Historial paginado: carga de a 20, "ver más" trae la siguiente página
+  const {
+    data: execPages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: execsLoading,
+  } = useInfiniteQuery({
+    queryKey: ['executions', address],
+    queryFn: ({ pageParam }) => fetchExecutions(address!, pageParam),
+    enabled: !!address,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + page.executions.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+    refetchInterval: 60_000,
+  });
+  const executions = execPages?.pages.flatMap((page) => page.executions) ?? [];
+  const totalExecutions = execPages?.pages[0]?.total ?? 0;
+
   const hasActivePlan = onchainPlan?.[3] === true;
   const sats = wbtcBalance != null ? Number(wbtcBalance) : 0;
   const usdt = usdtBalance != null ? Number(formatUnits(usdtBalance, 6)) : 0;
   const basis = apiPlan?.costBasis ?? null;
   const btcPrice = apiPlan?.btcPriceUsdt ?? null;
   const valueUsd = btcPrice != null ? (sats / SATS_PER_BTC) * btcPrice : null;
-  const executions = apiPlan?.executions ?? [];
 
   const toggleUnit = () => setUnit(unit === 'sats' ? 'btc' : 'sats');
 
   // La bóveda nunca desaparece: si hay historial o sats, se muestra aunque
   // el plan esté pausado/cancelado (con aviso para reactivar).
-  const hasHistory = executions.length > 0 || sats > 0;
+  const hasHistory = totalExecutions > 0 || sats > 0;
 
   // ===== Sin plan ni historial: estado vacío =====
-  if (!hasActivePlan && !hasHistory && !isLoading) {
+  if (!hasActivePlan && !hasHistory && !isLoading && !execsLoading) {
     return (
       <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
         <div className="space-y-2">
@@ -189,7 +209,7 @@ export default function DashboardPage() {
 
       {/* Historial */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold">{t('dash.history')} ({executions.length})</h2>
+        <h2 className="text-lg font-bold">{t('dash.history')} ({totalExecutions})</h2>
         {executions.length === 0 ? (
           <Card>
             <CardContent className="py-6 text-center">
@@ -198,7 +218,7 @@ export default function DashboardPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {executions.slice(0, 10).map((execution: ExecutionRow) => {
+            {executions.map((execution: ExecutionRow) => {
               const variant = STATUS_VARIANT[execution.status] ?? 'secondary';
               const statusKey = `status.${execution.status}` as DictKey;
               return (
@@ -238,10 +258,15 @@ export default function DashboardPage() {
                 </Card>
               );
             })}
-            {executions.length > 10 && (
-              <p className="text-center text-sm text-muted-foreground">
-                {t('dash.showing', { n: executions.length })}
-              </p>
+            {hasNextPage && (
+              <Button
+                fullWidth
+                variant="outline"
+                onClick={() => fetchNextPage()}
+                isLoading={isFetchingNextPage}
+              >
+                {t('dash.loadMore', { n: totalExecutions - executions.length })}
+              </Button>
             )}
           </div>
         )}

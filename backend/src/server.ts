@@ -289,6 +289,23 @@ export function buildServer() {
     return res.json({ sent: true });
   });
 
+  // Historial paginado (lazy loading en la UI)
+  app.get("/api/executions/:address", async (req, res) => {
+    try {
+      const address = String(req.params.address ?? "").toLowerCase();
+      if (!isAddress(address)) return res.status(400).json({ error: "invalid address" });
+      const planRow = await db.getPlanByWallet(address);
+      if (!planRow) return res.json({ executions: [], total: 0 });
+      const offset = Math.max(0, parseInt(String(req.query.offset ?? "0"), 10) || 0);
+      const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
+      const { rows, total } = await db.getExecutionsPage(planRow.id, offset, limit);
+      return res.json({ executions: rows, total });
+    } catch (err) {
+      console.error("[executions]", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
   app.get("/api/plans/:address", async (req, res) => {
     try {
       const address = req.params.address;

@@ -48,6 +48,16 @@ export async function fetchPlan(address: string): Promise<PlanResponse | null> {
   return res.json();
 }
 
+export async function fetchExecutions(
+  address: string,
+  offset: number,
+  limit = 20,
+): Promise<{ executions: ExecutionRow[]; total: number }> {
+  const res = await fetch(`${API_URL}/api/executions/${address}?offset=${offset}&limit=${limit}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
 export async function fetchTelegramStatus(address: string): Promise<{ linked: boolean }> {
   const res = await fetch(`${API_URL}/api/telegram/status/${address}`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
