@@ -215,11 +215,14 @@ export default function PlanPage() {
     }
   };
 
-  // Renovar presupuesto: nuevo approve por N cuotas del monto actual del plan
-  const RENEW_RUNS = 25;
+  // Renovar presupuesto: nuevo approve por N cuotas del monto actual del plan.
+  // Ojo semántico: approve REEMPLAZA la autorización (no suma) — la UI lo dice.
+  const [renewRuns, setRenewRuns] = useState('25');
+  const renewRunsNumber = parseInt(renewRuns, 10) || 0;
+  const canRenew = renewRunsNumber >= MIN_RUNS && renewRunsNumber <= MAX_RUNS;
   const [renewing, setRenewing] = useState(false);
   const handleRenew = async () => {
-    if (!address || !publicClient || !onchainPlan) return;
+    if (!address || !publicClient || !onchainPlan || !canRenew) return;
     setRenewing(true);
     setError('');
     try {
@@ -227,7 +230,7 @@ export default function PlanPage() {
         address: USDT,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [EXECUTOR, onchainPlan[0] * BigInt(RENEW_RUNS)],
+        args: [EXECUTOR, onchainPlan[0] * BigInt(renewRunsNumber)],
         dataSuffix: attributionSuffix(),
       });
       await publicClient.waitForTransactionReceipt({ hash }).catch(() => {});
@@ -334,8 +337,40 @@ export default function PlanPage() {
               <p className="text-sm font-medium">
                 {runsLeft === 0 ? t('plan.budgetEmpty') : t('plan.budgetLow')}
               </p>
-              <Button fullWidth onClick={handleRenew} isLoading={renewing}>
-                {t('plan.renew', { n: RENEW_RUNS })}
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTED_RUNS.map((runs) => (
+                  <button
+                    key={runs}
+                    type="button"
+                    onClick={() => setRenewRuns(runs.toString())}
+                    className={`px-3 py-1 text-sm font-medium border-2 border-foreground transition-colors
+                      ${renewRunsNumber === runs
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary hover:bg-muted'
+                      }`}
+                  >
+                    {t('plan.budgetOption', { n: runs })}
+                  </button>
+                ))}
+              </div>
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder={t('plan.budgetPlaceholder')}
+                value={renewRuns}
+                onChange={(e) => setRenewRuns(e.target.value.replace(/[^\d]/g, ''))}
+                error={renewRunsNumber > 0 && !canRenew ? t('plan.budgetError', { min: MIN_RUNS, max: MAX_RUNS }) : ''}
+              />
+              {canRenew && (
+                <p className="text-xs text-muted-foreground">
+                  {t('plan.renewHint', {
+                    n: renewRunsNumber,
+                    total: (parseFloat(planAmount) * renewRunsNumber).toFixed(2),
+                  })}
+                </p>
+              )}
+              <Button fullWidth onClick={handleRenew} isLoading={renewing} disabled={!canRenew}>
+                {t('plan.renew', { n: renewRunsNumber })}
               </Button>
             </CardContent>
           </Card>
