@@ -32,9 +32,13 @@ async function adoptOnchainPlans() {
   for (const plan of created) {
     const existing = await db.getPlanByWallet(plan.user);
     if (existing) {
-      // recreación de plan: reactivar con la config del evento (monto/frecuencia
-      // nuevos) y próxima corrida = ya — el next_run_at viejo confundía la UI
-      if (existing.status === "stopped") {
+      // recreación O edición del plan (createPlan sobrescribe on-chain):
+      // sincronizar config y arrancar ya. La condición evita resetear la
+      // programación en re-escaneos de eventos viejos de planes sin cambios.
+      const changed =
+        existing.amount_per_run !== plan.amountPerRun ||
+        existing.frequency_seconds !== plan.minInterval;
+      if (existing.status === "stopped" || changed) {
         await db.reactivatePlan(existing.id, plan.amountPerRun, plan.minInterval);
       }
       continue;

@@ -86,6 +86,18 @@ export default function PlanPage() {
   const [cancelled, setCancelled] = useState(false);
   const isActive = onchainPlan?.[3] === true && !cancelled;
 
+  // Editar plan = createPlan de nuevo (el contrato sobrescribe) con el form prefillado
+  const [editing, setEditing] = useState(false);
+  const startEditing = () => {
+    if (!onchainPlan) return;
+    setAmount(formatUnits(onchainPlan[0], 6));
+    const currentFreq = String(Number(onchainPlan[1]));
+    setFrequency((FREQUENCIES as readonly string[]).includes(currentFreq) ? currentFreq : FREQUENCIES[0]);
+    setBudgetRuns('25');
+    setError('');
+    setEditing(true);
+  };
+
   const amountNumber = parseFloat(amount) || 0;
   const amountError =
     amountNumber > 0 && (amountNumber < MIN_AMOUNT_USDT || amountNumber > MAX_AMOUNT_USDT)
@@ -201,6 +213,7 @@ export default function PlanPage() {
       // Quedarse aquí mostrando el plan creado (no ir al home). Reintentar el
       // read hasta que el nodo refleje active=true (forno balancea nodos).
       setCancelled(false);
+      setEditing(false);
       for (let i = 0; i < 5; i++) {
         const { data } = await refetchPlan();
         if (data?.[3] === true) break;
@@ -275,7 +288,7 @@ export default function PlanPage() {
   };
 
   // ===== Vista: plan activo =====
-  if (isActive && onchainPlan) {
+  if (isActive && onchainPlan && !editing) {
     const planAmount = formatUnits(onchainPlan[0], 6);
     const intervalSeconds = Number(onchainPlan[1]);
     const nextRunAt = apiPlan?.plan?.next_run_at ? new Date(apiPlan.plan.next_run_at) : null;
@@ -389,6 +402,9 @@ export default function PlanPage() {
           </p>
         )}
 
+        <Button fullWidth onClick={startEditing}>
+          {t('plan.edit')}
+        </Button>
         <Button variant="outline" fullWidth onClick={handleCancel} isLoading={cancelling}>
           {t('plan.cancel')}
         </Button>
@@ -401,8 +417,8 @@ export default function PlanPage() {
   return (
     <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">{t('plan.createTitle')}</h1>
-        <p className="text-muted-foreground">{t('plan.createSubtitle')}</p>
+        <h1 className="text-2xl font-bold">{editing ? t('plan.editTitle') : t('plan.createTitle')}</h1>
+        <p className="text-muted-foreground">{editing ? t('plan.editSubtitle') : t('plan.createSubtitle')}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -530,8 +546,13 @@ export default function PlanPage() {
         )}
 
         <Button type="submit" fullWidth size="lg" disabled={!canSubmit} isLoading={isLoading}>
-          {isLoading ? loadingLabel : t('plan.submit')}
+          {isLoading ? loadingLabel : editing ? t('plan.editSubmit') : t('plan.submit')}
         </Button>
+        {editing && (
+          <Button type="button" variant="outline" fullWidth onClick={() => setEditing(false)}>
+            {t('plan.editBack')}
+          </Button>
+        )}
       </form>
 
       <Card>
