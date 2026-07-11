@@ -110,35 +110,52 @@ export async function getExecutions(planId: string, limit = 50) {
   return data ?? [];
 }
 
-export async function linkTelegram(walletAddress: string, chatId: string) {
+export interface TelegramLink {
+  chatId: string;
+  lang: string;
+}
+
+export async function linkTelegram(walletAddress: string, chatId: string, lang = "es") {
   // upsert: permite vincular Telegram aunque el usuario aún no haya creado plan
+  const wallet = walletAddress.toLowerCase();
   const { error } = await supabase
     .from("agent_users")
-    .upsert(
-      { wallet_address: walletAddress.toLowerCase(), telegram_chat_id: chatId },
-      { onConflict: "wallet_address" },
-    );
-  if (error) throw error;
+    .upsert({ wallet_address: wallet, telegram_chat_id: chatId, lang }, { onConflict: "wallet_address" });
+  if (!error) return;
+  // fallback si la columna lang aún no existe (migration-lang.sql sin correr)
+  const { error: retryErr } = await supabase
+    .from("agent_users")
+    .upsert({ wallet_address: wallet, telegram_chat_id: chatId }, { onConflict: "wallet_address" });
+  if (retryErr) throw retryErr;
 }
 
-export async function getTelegramChatByWallet(walletAddress: string): Promise<string | null> {
+async function telegramLinkFrom(column: "id" | "wallet_address", value: string): Promise<TelegramLink | null> {
   const { data, error } = await supabase
     .from("agent_users")
-    .select("telegram_chat_id")
-    .eq("wallet_address", walletAddress.toLowerCase())
+    .select("telegram_chat_id, lang")
+    .eq(column, value)
     .maybeSingle();
-  if (error) throw error;
-  return (data?.telegram_chat_id as string | null) ?? null;
+  if (!error) {
+    const chatId = (data?.telegram_chat_id as string | null) ?? null;
+    return chatId ? { chatId, lang: (data?.lang as string | null) ?? "es" } : null;
+  }
+  // fallback si la columna lang aún no existe
+  const { data: old, error: oldErr } = await supabase
+    .from("agent_users")
+    .select("telegram_chat_id")
+    .eq(column, value)
+    .maybeSingle();
+  if (oldErr) throw oldErr;
+  const chatId = (old?.telegram_chat_id as string | null) ?? null;
+  return chatId ? { chatId, lang: "es" } : null;
 }
 
-export async function getTelegramChatByUserId(userId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("agent_users")
-    .select("telegram_chat_id")
-    .eq("id", userId)
-    .maybeSingle();
-  if (error) throw error;
-  return (data?.telegram_chat_id as string | null) ?? null;
+export async function getTelegramByUserId(userId: string): Promise<TelegramLink | null> {
+  return telegramLinkFrom("id", userId);
+}
+
+export async function getTelegramByWallet(walletAddress: string): Promise<TelegramLink | null> {
+  return telegramLinkFrom("wallet_address", walletAddress.toLowerCase());
 }
 
 export interface GlobalStats {

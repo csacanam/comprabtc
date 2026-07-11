@@ -307,7 +307,7 @@ export default function PlanPage() {
             label={t('plan.amountLabel')}
             type="text"
             inputMode="decimal"
-            placeholder="Ej: 5"
+            placeholder={t('plan.amountPlaceholder')}
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
             error={amountError}
@@ -363,7 +363,7 @@ export default function PlanPage() {
             label={t('plan.budgetLabel')}
             type="text"
             inputMode="numeric"
-            placeholder="Ej: 100"
+            placeholder={t('plan.budgetPlaceholder')}
             value={budgetRuns}
             onChange={(e) => setBudgetRuns(e.target.value.replace(/[^\d]/g, ''))}
             error={runsError}

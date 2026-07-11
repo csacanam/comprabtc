@@ -132,7 +132,7 @@ export default function SettingsPage() {
                   ))}
                 </ol>
                 <a
-                  href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT}?start=${address}`}
+                  href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT}?start=${address}_${lang}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block"

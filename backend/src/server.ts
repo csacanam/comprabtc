@@ -5,7 +5,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { isAddress, formatUnits } from "viem";
 import { config, USDT, CELO_NETWORK, USDT_EIP712 } from "./config.js";
 import { readPlan, readUserFunds, readFees, quoteUsdtToWbtc, sendExecute, btcSpotPriceUsdt } from "./chain.js";
-import { sendTelegram, telegramEnabled } from "./telegram.js";
+import { sendTelegram, telegramEnabled, userMessages, normalizeLang } from "./telegram.js";
 import * as db from "./db.js";
 
 export function buildServer() {
@@ -155,17 +155,15 @@ export function buildServer() {
       });
       await db.setPlanStatus(planRow.id, "active", nextRun(planRow));
 
-      // Alerta Telegram al usuario (si vinculó su chat)
+      // Alerta Telegram al usuario (si vinculó su chat), en su idioma
       if (telegramEnabled()) {
-        db.getTelegramChatByUserId(planRow.user_id)
-          .then((chatId) => {
-            if (!chatId) return;
-            const sats = Number(executed?.amountOut ?? quoted).toLocaleString("es-CO");
+        db.getTelegramByUserId(planRow.user_id)
+          .then((link) => {
+            if (!link) return;
+            const lang = normalizeLang(link.lang);
+            const sats = Number(executed?.amountOut ?? quoted).toLocaleString(lang === "es" ? "es-CO" : "en-US");
             const usd = (Number(onchain.amountPerRun) / 1e6).toFixed(2);
-            return sendTelegram(
-              chatId,
-              `🟠 <b>CompraBTC</b>\nTu agente compró <b>${sats} sats</b> por $${usd} USDT.\n<a href="https://celoscan.io/tx/${hash}">Ver compra en Celoscan</a>`,
-            );
+            return sendTelegram(link.chatId, userMessages[lang].purchase(sats, usd, hash));
           })
           .catch((err) => console.warn("[telegram] notify failed:", err));
       }
@@ -244,28 +242,23 @@ export function buildServer() {
         await sendTelegram(chatId, `Tu chat id es <code>${chatId}</code>`);
         return;
       }
-      // /start 0x... → vincular wallet a este chat
-      const wallet = text.startsWith("/start ") ? text.slice(7).trim().toLowerCase() : "";
-      if (isAddress(wallet)) {
+      // /start 0x...[_lang] → vincular wallet (+idioma) a este chat
+      const payload = text.startsWith("/start ") ? text.slice(7).trim() : "";
+      const match = payload.match(/^(0x[a-fA-F0-9]{40})(?:_(es|en))?$/);
+      if (match) {
+        const wallet = match[1].toLowerCase();
+        const lang = normalizeLang(match[2]);
         // si la wallet ya estaba vinculada a OTRO chat, avisar al anterior
         // (la dirección es pública: cualquiera con el link podría re-vincular)
-        const previousChat = await db.getTelegramChatByWallet(wallet).catch(() => null);
-        await db.linkTelegram(wallet, chatId);
-        await sendTelegram(
-          chatId,
-          `✅ Listo. Te avisaré aquí cada vez que tu agente compre Bitcoin para <code>${wallet.slice(0, 8)}…</code>`,
-        );
-        if (previousChat && previousChat !== chatId) {
-          await sendTelegram(
-            previousChat,
-            `⚠️ Las alertas de <code>${wallet.slice(0, 8)}…</code> se vincularon desde otro Telegram y dejarán de llegar aquí. Si no fuiste tú, vuelve a conectar desde la app (Ajustes → Conectar Telegram).`,
-          );
+        const previous = await db.getTelegramByWallet(wallet).catch(() => null);
+        await db.linkTelegram(wallet, chatId, lang);
+        await sendTelegram(chatId, userMessages[lang].linked(wallet.slice(0, 8)));
+        if (previous && previous.chatId !== chatId) {
+          await sendTelegram(previous.chatId, userMessages[normalizeLang(previous.lang)].relinked(wallet.slice(0, 8)));
         }
       } else if (text.startsWith("/start")) {
-        await sendTelegram(
-          chatId,
-          "Para vincular tus alertas, entra a comprabtc.vercel.app → Ajustes → Conectar Telegram.",
-        );
+        // sin payload no sabemos el idioma: bilingüe
+        await sendTelegram(chatId, `${userMessages.es.startHelp}\n${userMessages.en.startHelp}`);
       }
     } catch (err) {
       console.warn("[telegram] webhook error:", err);
@@ -276,8 +269,8 @@ export function buildServer() {
   app.get("/api/telegram/status/:address", async (req, res) => {
     const address = String(req.params.address ?? "");
     if (!isAddress(address)) return res.status(400).json({ error: "invalid address" });
-    const chat = await db.getTelegramChatByWallet(address).catch(() => null);
-    return res.json({ linked: Boolean(chat) });
+    const link = await db.getTelegramByWallet(address).catch(() => null);
+    return res.json({ linked: Boolean(link) });
   });
 
   // Mensaje de prueba al chat vinculado (cooldown 60s por wallet)
@@ -285,14 +278,14 @@ export function buildServer() {
   app.post("/api/telegram/test", async (req, res) => {
     const address = String(req.body?.walletAddress ?? "").toLowerCase();
     if (!isAddress(address)) return res.status(400).json({ error: "invalid walletAddress" });
-    const chat = await db.getTelegramChatByWallet(address).catch(() => null);
-    if (!chat) return res.status(404).json({ linked: false, error: "telegram not linked" });
+    const link = await db.getTelegramByWallet(address).catch(() => null);
+    if (!link) return res.status(404).json({ linked: false, error: "telegram not linked" });
     const now = Date.now();
     if (now - (lastTelegramTestAt.get(address) ?? 0) < 60_000) {
       return res.status(429).json({ error: "wait a minute between tests" });
     }
     lastTelegramTestAt.set(address, now);
-    await sendTelegram(chat, "👋 Prueba de CompraBTC: por aquí te avisaré cada vez que tu agente compre Bitcoin.");
+    await sendTelegram(link.chatId, userMessages[normalizeLang(link.lang)].test);
     return res.json({ sent: true });
   });
 

@@ -34,6 +34,38 @@ export async function sendOps(text: string): Promise<void> {
   await sendTelegram(config.opsTelegramChatId, text, config.opsTelegramBotToken || undefined);
 }
 
+// ===== MENSAJES AL USUARIO (multi-idioma) =====
+// El idioma se captura al vincular (deep link ?start=<wallet>_<lang>) y se
+// guarda en agent_users.lang — todo mensaje al usuario debe salir de aquí.
+export type UserLang = "es" | "en";
+
+export const userMessages = {
+  es: {
+    linked: (w: string) =>
+      `✅ Listo. Te avisaré aquí cada vez que tu agente compre Bitcoin para <code>${w}…</code>`,
+    relinked: (w: string) =>
+      `⚠️ Las alertas de <code>${w}…</code> se vincularon desde otro Telegram y dejarán de llegar aquí. Si no fuiste tú, vuelve a conectar desde la app (Ajustes → Conectar Telegram).`,
+    startHelp: "Para vincular tus alertas, entra a comprabtc.vercel.app → Ajustes → Conectar Telegram.",
+    test: "👋 Prueba de CompraBTC: por aquí te avisaré cada vez que tu agente compre Bitcoin.",
+    purchase: (sats: string, usd: string, tx: string) =>
+      `🟠 <b>CompraBTC</b>\nTu agente compró <b>${sats} sats</b> por $${usd} USDT.\n<a href="https://celoscan.io/tx/${tx}">Ver compra en Celoscan</a>`,
+  },
+  en: {
+    linked: (w: string) =>
+      `✅ Done. I'll message you here every time your agent buys Bitcoin for <code>${w}…</code>`,
+    relinked: (w: string) =>
+      `⚠️ Alerts for <code>${w}…</code> were linked from another Telegram and will stop arriving here. If that wasn't you, reconnect from the app (Settings → Connect Telegram).`,
+    startHelp: "To link your alerts, open comprabtc.vercel.app → Settings → Connect Telegram.",
+    test: "👋 CompraBTC test: I'll message you here every time your agent buys Bitcoin.",
+    purchase: (sats: string, usd: string, tx: string) =>
+      `🟠 <b>CompraBTC</b>\nYour agent bought <b>${sats} sats</b> for $${usd} USDT.\n<a href="https://celoscan.io/tx/${tx}">View on Celoscan</a>`,
+  },
+} as const satisfies Record<UserLang, unknown>;
+
+export function normalizeLang(value: string | null | undefined): UserLang {
+  return value === "en" ? "en" : "es";
+}
+
 /** Registra el webhook del bot apuntando a nuestra URL pública. */
 export async function setupWebhook(publicUrl: string): Promise<void> {
   if (!telegramEnabled()) return;
