@@ -45,6 +45,11 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  // Verificación de dominio (Talent Protocol)
+  other: {
+    'talentapp:project_verification':
+      'b8d2921c9736bf472fb2dce7b265316d8450adbc1f29fd85ae5f90d076acce6e37bba60458354437dfc59162ec85f08a57f0f7adb3a91aac27da10a167ebd6d2',
+  },
 }
 
 // Viewport para PWA mobile
