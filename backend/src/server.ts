@@ -247,11 +247,20 @@ export function buildServer() {
       // /start 0x... → vincular wallet a este chat
       const wallet = text.startsWith("/start ") ? text.slice(7).trim().toLowerCase() : "";
       if (isAddress(wallet)) {
+        // si la wallet ya estaba vinculada a OTRO chat, avisar al anterior
+        // (la dirección es pública: cualquiera con el link podría re-vincular)
+        const previousChat = await db.getTelegramChatByWallet(wallet).catch(() => null);
         await db.linkTelegram(wallet, chatId);
         await sendTelegram(
           chatId,
           `✅ Listo. Te avisaré aquí cada vez que tu agente compre Bitcoin para <code>${wallet.slice(0, 8)}…</code>`,
         );
+        if (previousChat && previousChat !== chatId) {
+          await sendTelegram(
+            previousChat,
+            `⚠️ Las alertas de <code>${wallet.slice(0, 8)}…</code> se vincularon desde otro Telegram y dejarán de llegar aquí. Si no fuiste tú, vuelve a conectar desde la app (Ajustes → Conectar Telegram).`,
+          );
+        }
       } else if (text.startsWith("/start")) {
         await sendTelegram(
           chatId,

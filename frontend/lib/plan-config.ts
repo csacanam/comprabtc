@@ -6,8 +6,7 @@
  */
 
 // Frecuencias disponibles (segundos → minInterval del contrato).
-// Etapa hackathon: solo las de alta frecuencia.
-export const FREQUENCIES = ['3600', '21600', '43200'] as const;
+export const FREQUENCIES = ['3600', '21600', '43200', '86400'] as const;
 
 // Montos sugeridos por cuota (USDT)
 export const SUGGESTED_AMOUNTS = [0.1, 1, 5, 20];
