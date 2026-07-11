@@ -20,6 +20,7 @@ import { fetchPlan, fetchExecutions, type ExecutionRow } from '@/services/api';
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
   success: 'success',
   skipped_no_funds: 'warning',
+  skipped_no_allowance: 'warning',
   skipped_stop_loss: 'warning',
   failed: 'destructive',
 };

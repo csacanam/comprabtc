@@ -49,6 +49,10 @@ export const userMessages = {
     test: "👋 Prueba de CompraBTC: por aquí te avisaré cada vez que tu agente compre Bitcoin.",
     purchase: (sats: string, usd: string, tx: string) =>
       `🟠 <b>CompraBTC</b>\nTu agente compró <b>${sats} sats</b> por $${usd} USDT.\n<a href="https://celoscan.io/tx/${tx}">Ver compra en Celoscan</a>`,
+    skippedNoFunds:
+      "⚠️ <b>CompraBTC</b>\nTu cuota se saltó: no había USDT suficiente en tu billetera. Agrega USDT y el agente retoma solo en la próxima cuota.",
+    skippedNoAllowance:
+      "⚠️ <b>CompraBTC</b>\nTu cuota se saltó: el presupuesto que autorizaste ya se usó completo. Entra a la app → Mi plan y autoriza más cuotas para que el agente siga comprando.",
   },
   en: {
     linked: (w: string) =>
@@ -59,6 +63,10 @@ export const userMessages = {
     test: "👋 CompraBTC test: I'll message you here every time your agent buys Bitcoin.",
     purchase: (sats: string, usd: string, tx: string) =>
       `🟠 <b>CompraBTC</b>\nYour agent bought <b>${sats} sats</b> for $${usd} USDT.\n<a href="https://celoscan.io/tx/${tx}">View on Celoscan</a>`,
+    skippedNoFunds:
+      "⚠️ <b>CompraBTC</b>\nYour installment was skipped: not enough USDT in your wallet. Add USDT and the agent resumes on the next installment automatically.",
+    skippedNoAllowance:
+      "⚠️ <b>CompraBTC</b>\nYour installment was skipped: the budget you authorized is fully used. Open the app → My plan and authorize more installments so the agent can keep buying.",
   },
 } as const satisfies Record<UserLang, unknown>;
 

@@ -125,6 +125,15 @@ export default function PlanPage() {
     args: address ? [address] : undefined,
     query: { enabled: !!address, refetchInterval: 30_000 },
   });
+
+  // Presupuesto restante = allowance vigente / monto por cuota
+  const { data: allowanceData, refetch: refetchAllowance } = useReadContract({
+    address: USDT,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: address ? [address, EXECUTOR] : undefined,
+    query: { enabled: !!address, refetchInterval: 30_000 },
+  });
   const balanceUsdt = usdtBalance != null ? Number(formatUnits(usdtBalance, 6)) : null;
   const budgetUsdt = amountNumber * runsNumber;
   const coveredRuns =
@@ -206,6 +215,31 @@ export default function PlanPage() {
     }
   };
 
+  // Renovar presupuesto: nuevo approve por N cuotas del monto actual del plan
+  const RENEW_RUNS = 25;
+  const [renewing, setRenewing] = useState(false);
+  const handleRenew = async () => {
+    if (!address || !publicClient || !onchainPlan) return;
+    setRenewing(true);
+    setError('');
+    try {
+      const hash = await writeContractAsync({
+        address: USDT,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [EXECUTOR, onchainPlan[0] * BigInt(RENEW_RUNS)],
+        dataSuffix: attributionSuffix(),
+      });
+      await publicClient.waitForTransactionReceipt({ hash }).catch(() => {});
+      await refetchAllowance();
+    } catch (err) {
+      console.error(err);
+      setError(t('plan.renewError'));
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   // Cancelar plan on-chain
   const [cancelling, setCancelling] = useState(false);
   const handleCancel = async () => {
@@ -242,6 +276,12 @@ export default function PlanPage() {
     const planAmount = formatUnits(onchainPlan[0], 6);
     const intervalSeconds = Number(onchainPlan[1]);
     const nextRunAt = apiPlan?.plan?.next_run_at ? new Date(apiPlan.plan.next_run_at) : null;
+    // Cuotas que el presupuesto autorizado todavía cubre
+    const runsLeft =
+      allowanceData != null && onchainPlan[0] > BigInt(0)
+        ? Number(allowanceData / onchainPlan[0])
+        : null;
+    const budgetWarning = runsLeft != null && runsLeft < 5;
 
     return (
       <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
@@ -267,6 +307,14 @@ export default function PlanPage() {
                     : `${intervalSeconds}s`}
                 </span>
               </div>
+              {runsLeft != null && (
+                <div className="flex justify-between items-center py-2 border-b border-primary-foreground/20">
+                  <span className="text-sm text-primary-foreground/80">{t('plan.budgetLeft')}</span>
+                  <span className="font-bold">
+                    {budgetWarning ? '⚠️ ' : ''}{t('plan.budgetLeftValue', { n: runsLeft })}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-primary-foreground/80">{t('plan.nextRun')}</span>
                 <span className="font-bold">
@@ -278,6 +326,20 @@ export default function PlanPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Presupuesto agotado o por agotarse: renovar sin recrear el plan */}
+        {budgetWarning && (
+          <Card className="bg-warning/10 border-warning">
+            <CardContent className="space-y-3 py-4">
+              <p className="text-sm font-medium">
+                {runsLeft === 0 ? t('plan.budgetEmpty') : t('plan.budgetLow')}
+              </p>
+              <Button fullWidth onClick={handleRenew} isLoading={renewing}>
+                {t('plan.renew', { n: RENEW_RUNS })}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="space-y-2">

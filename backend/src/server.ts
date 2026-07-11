@@ -124,11 +124,27 @@ export function buildServer() {
         return res.status(409).json({ error: "interval not elapsed" });
       }
 
-      // saldo/allowance → skip amable en vez de tx revertida
+      // saldo/allowance → skip amable en vez de tx revertida, distinguiendo la
+      // causa: sin saldo USDT vs presupuesto autorizado agotado (confundirlas
+      // desconcertaba al usuario que sí veía balance en su billetera)
       const { balance, allowance } = await readUserFunds(user as `0x${string}`);
       if (balance < onchain.amountPerRun || allowance < onchain.amountPerRun) {
-        await db.recordExecution({ planId: planRow.id, status: "skipped_no_funds" });
+        const skipStatus = balance < onchain.amountPerRun ? "skipped_no_funds" : "skipped_no_allowance";
+        const firstSkip = planRow.status !== "no_funds"; // avisar solo al entrar al estado
+        await db.recordExecution({ planId: planRow.id, status: skipStatus });
         await db.setPlanStatus(planRow.id, "no_funds", nextRun(planRow));
+        if (firstSkip && telegramEnabled()) {
+          db.getTelegramByUserId(planRow.user_id)
+            .then((link) => {
+              if (!link) return;
+              const lang = normalizeLang(link.lang);
+              const msg = skipStatus === "skipped_no_funds"
+                ? userMessages[lang].skippedNoFunds
+                : userMessages[lang].skippedNoAllowance;
+              return sendTelegram(link.chatId, msg);
+            })
+            .catch((err) => console.warn("[telegram] skip notify failed:", err));
+        }
         return res.status(402).json({ error: "insufficient balance or allowance", skipped: true });
       }
 
