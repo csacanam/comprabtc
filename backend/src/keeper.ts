@@ -144,7 +144,7 @@ async function opsMonitor() {
         `${level(celo, 0.2)} Keeper CELO (gas): <b>${celo.toFixed(3)}</b> · mín 0.2\n` +
         `${level(usdt, 2)} Keeper USDT (paga x402): <b>$${usdt.toFixed(2)}</b> · mín $2\n` +
         `${credits != null ? level(credits, 100) : "❔"} Créditos x402: <b>${credits ?? "?"}</b> · mín 100\n` +
-        `₿ Keeper sats (su plan demo, no es ingreso): <b>${Number(keeperSats).toLocaleString("es-CO")}</b>${keeperBtcUsd != null ? ` (~$${keeperBtcUsd.toFixed(2)})` : ""}`;
+        `₿ Sats en el keeper (compras demo del plan cancelado — <b>pendientes de retirar</b>, no es ingreso): <b>${Number(keeperSats).toLocaleString("es-CO")}</b>${keeperBtcUsd != null ? ` (~$${keeperBtcUsd.toFixed(2)})` : ""}`;
 
       await sendOps(
         `📊 <b>CompraBTC digest</b>\n\n` +
