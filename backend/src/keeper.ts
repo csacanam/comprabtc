@@ -1,7 +1,7 @@
 import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm";
 import { config, CELO_NETWORK, USDT, WBTC } from "./config.js";
-import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans } from "./chain.js";
+import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans, readPlan } from "./chain.js";
 import { erc20Abi } from "./abi.js";
 import { sendOps } from "./telegram.js";
 import * as db from "./db.js";
