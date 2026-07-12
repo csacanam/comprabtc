@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.csacanam/comprabtc",
+  "description": "Non-custodial Bitcoin DCA for agent treasuries: approve USDT once, stack WBTC on Celo forever.",
+  "repository": {
+    "url": "https://github.com/csacanam/comprabtc",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "comprabtc-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "COMPRABTC_WALLET_PRIVATE_KEY",
+          "description": "Treasury/agent wallet that owns the plan (holds USDT, signs setup txs, receives WBTC). Required only for create/renew/cancel; reads work without it.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "COMPRABTC_MAX_PER_RUN_USDT",
+          "description": "Safety cap per installment in USDT (default 50, pool-depth guard).",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

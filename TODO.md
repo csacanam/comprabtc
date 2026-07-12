@@ -17,6 +17,11 @@ Contexto: aplicando el playbook Remotion (skill oficial + llms.txt + demo viral)
 - [ ] Responder comentarios de mantenedores en los PRs de aigora-skills.
 - [ ] Decisión pendiente: `setFeeFlat` a $0.002.
 
+## MCP (12 jul)
+
+- [x] MCP server para tesorerías construido y probado (`mcp/`): get_wallet_status y get_portfolio (gratis, lecturas on-chain reales verificadas), create_plan (2 txs con validaciones de balance/gas/cap por cuota), renew_budget, cancel_plan (con revoke). La wallet configurada ES la tesorería dueña del plan — sin capacidad de retiro por diseño.
+- [ ] **Publicar `comprabtc-mcp`**: `cd mcp && npm publish` → `mcp-publisher publish` (server.json listo; nombre libre en npm verificado).
+
 ## Mantenimiento
 
 - [ ] El skill vive en `skills/comprabtc/SKILL.md` — si se cambia el contrato/API, actualizarlo (es lo que instalan los agentes).

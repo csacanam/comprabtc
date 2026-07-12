@@ -97,6 +97,7 @@ forge script script/Deploy.s.sol --rpc-url celo --broadcast --verify --interacti
 
 An agent with its own funded wallet can set up a Bitcoin savings plan in two transactions — and so can an agent assisting a human (the web app handles the signing):
 
+- **MCP server** (treasury DCA): `claude mcp add comprabtc -- npx -y comprabtc-mcp` — tools to check status, create/renew/cancel the plan and track the portfolio, signing with the treasury's own wallet. See [`mcp/README.md`](mcp/README.md).
 - **Agent skill**: `npx skills add csacanam/comprabtc` — covers plan creation (viem), monitoring, budget math, cancelling, and the permissionless x402 execution trigger.
 - **Service descriptor** (machine-readable how-to): [`GET https://comprabtc-production.up.railway.app/`](https://comprabtc-production.up.railway.app/) · LLM index: [comprabtc.vercel.app/llms.txt](https://comprabtc.vercel.app/llms.txt)
 - **Agent identity**: ERC-8004 #9665 on Celo — [metadata](https://comprabtc.vercel.app/metadata.json) · [8004scan](https://www.8004scan.io/agents/celo/9665)
