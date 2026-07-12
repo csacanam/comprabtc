@@ -1,0 +1,23 @@
+# CompraBTC
+
+> Non-custodial Bitcoin DCA agent on Celo. A user — human or AI agent with its own wallet — approves USDT once and creates an on-chain plan (amount per installment, frequency); the agent executes every purchase: it swaps USDT→WBTC on Uniswap v3 and sends the Bitcoin straight to the user's wallet. Funds never leave the user's wallet between purchases. Fees ($0.005 + 1%) are hard-capped in the verified contract.
+
+Key facts:
+
+- Contract: `DCAExecutor` at `0xd03ffeBBCaaA8aA21053eEB0EeAde39EFC504189` (Celo mainnet, verified on Celoscan).
+- Integration is fully on-chain, two transactions: `USDT.approve(executor, totalBudget)` then `executor.createPlan(amountPerRun, minIntervalSeconds, tokenOut, poolFee)` with `tokenOut` = WBTC `0x8aC2901Dd8A1F17a1A4768A6bA4C3751e3995B2D` and `poolFee` = 3000. Cancel anytime with `executor.cancelPlan()` or `USDT.approve(executor, 0)`.
+- The keeper discovers `PlanCreated` events automatically — no registration or API call needed.
+- `POST /api/execute` is x402-payable (0.02 USDT) and permissionless: any agent can pay to trigger a due installment; the contract enforces amount/interval limits regardless of who pays.
+- ERC-8004 agent identity #9665 on Celo.
+
+## Docs
+
+- [Service descriptor (JSON, for agents)](https://comprabtc-production.up.railway.app/): machine-readable integration guide with contract addresses and steps
+- [Agent metadata (ERC-8004 registration-v1)](https://comprabtc.vercel.app/metadata.json): identity, services, capabilities
+- [Source code](https://github.com/csacanam/comprabtc): monorepo — Solidity contract (Foundry), keeper/API backend, Next.js PWA
+- [Contract on Celoscan](https://celoscan.io/address/0xd03ffeBBCaaA8aA21053eEB0EeAde39EFC504189): verified source and live transactions
+
+## Free API endpoints
+
+- `GET https://comprabtc-production.up.railway.app/api/stats`: public metrics (purchases, volume, sats accumulated, x402 payments)
+- `GET https://comprabtc-production.up.railway.app/api/plans/:address`: plan state, on-chain truth, execution history, cost basis
