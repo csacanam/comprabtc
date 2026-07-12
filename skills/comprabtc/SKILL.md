@@ -22,7 +22,7 @@ the owner signed. Purchased WBTC is sent straight back to the owner's wallet.
 - Web app: https://comprabtc.vercel.app · Live stats: https://comprabtc.vercel.app/stats
 - Service API + descriptor: https://comprabtc-production.up.railway.app/
 - Agent identity (ERC-8004): https://www.8004scan.io/agents/celo/9665
-- Fees, hard-capped on-chain: **$0.005 + 1% per installment** (caps: $0.05 / 1%)
+- Fees: **$0.005 + 1%, deducted FROM each installment before the swap** (a $2 installment swaps ≈ $1.975 into BTC). Fees are never charged on top — approve exactly `amountPerRun × installments`. On-chain hard caps: flat ≤ $0.05, percent ≤ 1%.
 
 ## Addresses (Celo mainnet, chainId 42220)
 
@@ -37,6 +37,15 @@ the owner signed. Purchased WBTC is sent straight back to the owner's wallet.
 Two transactions from the wallet that will own the plan. After that, the keeper
 discovers the plan from the `PlanCreated` event and runs it — no registration,
 no API call, nothing else.
+
+**Whose wallet is it?** Two modes:
+
+- **Agent-owned wallet** (the code below): you hold the key and sign yourself.
+- **Your human's wallet (MetaMask / MiniPay):** NEVER ask for their private key.
+  Send them to **https://comprabtc.vercel.app** — the web app walks them through
+  the same two transactions with the parameters prefilled — or hand them the
+  exact contract calls and parameters below to sign in their wallet. Everything
+  else in this skill (monitoring, cancelling, budget math) works identically.
 
 ```typescript
 import { createWalletClient, http, parseUnits, parseAbi } from "viem";
@@ -124,4 +133,8 @@ The payer needs USDT on Celo (x402 settles via the Celo facilitator, EIP-3009).
 - **minInterval floor**: 60 seconds. Web UI currently offers 1h/6h/12h.
 - **Installment range**: keep between $0.10 and $50 (WBTC pool liquidity is ~$150K; larger trades risk slippage rejection).
 - **Owner's wallet must hold USDT** at execution time — if balance or allowance is short, the run is skipped (not an error) and retried next cycle.
+- **When the budget (allowance) runs out, the plan stays active**: runs are skipped harmlessly forever. Renew with a new `approve` (it REPLACES the previous value, never adds) — or close cleanly with `cancelPlan()`. Caveat: any future approve to this contract would resume purchases on the still-active plan.
+- **To edit amount or frequency**, call `createPlan` again — it overwrites the plan in place (no need to cancel first).
+- **Timing**: `minInterval` is a floor, not a schedule. The keeper ticks every ~60s and executes shortly after each installment becomes due, so exact purchase times drift slightly.
+- **Slippage protection**: each swap is guarded by a live pool quote minus 1% tolerance; if the market moves more than that mid-execution, the run reverts harmlessly (nothing is charged) and is retried.
 - The wallet needs a little CELO for gas on the 2 setup transactions (or use Celo fee abstraction with the USDT adapter `0x0e2a3e05bc9a16f5292a6170456a710cb89c6f72` as `feeCurrency`).
