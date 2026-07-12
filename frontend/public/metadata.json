@@ -1,0 +1,42 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CompraBTC",
+  "description": "Autonomous agent that stacks Bitcoin for people who want to buy BTC and forget about it. Users set a plan once (from $0.10 USDT per installment, hourly to 12h); the agent executes every purchase on-chain on Celo: it pays its execution API via x402 micropayments and swaps USDT to WBTC on Uniswap v3, delivering Bitcoin straight to the user's wallet. Non-custodial: funds stay in the user's wallet; fees ($0.005 + 1%) are hard-capped in the verified contract 0xd03ffeBBCaaA8aA21053eEB0EeAde39EFC504189. Agent-usable: any wallet can create a plan on-chain and any x402 client can pay POST /api/execute to trigger a purchase — permissionless.",
+  "image": "https://comprabtc.vercel.app/icon-512.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://comprabtc.vercel.app"
+    },
+    {
+      "name": "x402-execute-api",
+      "endpoint": "https://comprabtc-production.up.railway.app/api/execute",
+      "version": "x402-v2"
+    },
+    {
+      "name": "agentWallet",
+      "endpoint": "eip155:42220:0x6Bd5c303b2ed7E264C1Ce9D3592457292a1F1c43"
+    },
+    {
+      "name": "OASF",
+      "endpoint": "https://comprabtc-production.up.railway.app/",
+      "version": "0.8.0",
+      "skills": [
+        "tool_use_and_automation/workflow_automation",
+        "science_and_specialized_domains/blockchain_and_web3/defi_trading",
+        "business_and_professional/investment_and_trading"
+      ],
+      "domains": ["technology/blockchain"]
+    }
+  ],
+  "active": true,
+  "x402Support": true,
+  "registrations": [
+    {
+      "agentId": 9665,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ],
+  "supportedTrust": ["reputation"],
+  "updatedAt": 1783728000
+}
