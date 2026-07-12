@@ -6,7 +6,7 @@ Contexto: aplicando el playbook Remotion (skill oficial + llms.txt + demo viral)
 
 - [ ] **Demo en X** con output real: video corto de Claude Code creando un plan DCA (`npx skills add csacanam/comprabtc` en el post). Es el paso de mayor impacto del playbook.
 - [ ] Verificar que 8004scan re-indexó el perfil (capabilities OASF, logo, x402, verificación circular): https://www.8004scan.io/agents/celo/9665
-- [ ] PRs a awesome-lists: awesome-erc8004, awesome-celo, awesome-x402.
+- [x] PRs a awesome-lists ABIERTOS (12 jul): awesome-mcp-servers#9909 (los 4 MCPs), awesome-agentic-commerce#442 (ex awesome-x402, las 3 apps), awesome-erc8004#80 (#9665 y #9669), celo-org/awesome-celo#1 (CompraBTC/HashProof/Voulti). Monitorear reviews de mantenedores.
 - [ ] Endpoint x402 **canónico** (pago → valor en la respuesta): `POST /api/backtest` con la lógica de `/calc` (simulación DCA con precios históricos). Hoy el único x402 es `/api/execute` (metering del keeper, auto-pago).
 - [ ] Conseguir feedback on-chain de usuarios/agentes reales (ERC-8004 Reputation Registry / Aigora) — es lo que rankea en los leaderboards de agentes.
 
