@@ -20,7 +20,7 @@ Contexto: aplicando el playbook Remotion (skill oficial + llms.txt + demo viral)
 ## MCP (12 jul)
 
 - [x] MCP server para tesorerías construido y probado (`mcp/`): get_wallet_status y get_portfolio (gratis, lecturas on-chain reales verificadas), create_plan (2 txs con validaciones de balance/gas/cap por cuota), renew_budget, cancel_plan (con revoke). La wallet configurada ES la tesorería dueña del plan — sin capacidad de retiro por diseño.
-- [ ] **Publicar `comprabtc-mcp`**: `cd mcp && npm publish` → `mcp-publisher publish` (server.json listo; nombre libre en npm verificado).
+- [x] `comprabtc-mcp@0.1.0` PUBLICADO (12 jul): npm (cold-install npx verificado) + registro MCP oficial (`io.github.csacanam/comprabtc`). Instalación: `claude mcp add comprabtc -- npx -y comprabtc-mcp`.
 
 ## Mantenimiento
 
