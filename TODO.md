@@ -7,7 +7,7 @@ Contexto: aplicando el playbook Remotion (skill oficial + llms.txt + demo viral)
 - [ ] **Demo en X** con output real: video corto de Claude Code creando un plan DCA (`npx skills add csacanam/comprabtc` en el post). Es el paso de mayor impacto del playbook.
 - [ ] Verificar que 8004scan re-indexó el perfil (capabilities OASF, logo, x402, verificación circular): https://www.8004scan.io/agents/celo/9665
 - [x] PRs a awesome-lists ABIERTOS (12 jul): awesome-mcp-servers#9909 (los 4 MCPs), awesome-agentic-commerce#442 (ex awesome-x402, las 3 apps), awesome-erc8004#80 (#9665 y #9669), celo-org/awesome-celo#1 (CompraBTC/HashProof/Voulti). Monitorear reviews de mantenedores.
-- [ ] **PR #9909**: 3/4 aprobados en Glama y badges pusheados a la rama (12 jul). Falta: lotero-mcp fue rechazado (README raíz sin mención MCP — ya corregido y pusheado); Camilo debe RE-SUBMITIRLO en Glama; al aprobarse, agregar su badge (`csacanam/lotero-core`) a la rama `add-csacanam-servers` del fork en scratchpad o re-clonando.
+- [x] **PR #9909 completo** (12 jul): 4/4 aprobados en Glama, 4 badges en la rama, requisitos del bot cumplidos — esperando merge del mantenedor.
 - [ ] Endpoint x402 **canónico** (pago → valor en la respuesta): `POST /api/backtest` con la lógica de `/calc` (simulación DCA con precios históricos). Hoy el único x402 es `/api/execute` (metering del keeper, auto-pago).
 - [ ] Conseguir feedback on-chain de usuarios/agentes reales (ERC-8004 Reputation Registry / Aigora) — es lo que rankea en los leaderboards de agentes.
 
