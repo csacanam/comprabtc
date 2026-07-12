@@ -93,6 +93,14 @@ cd contracts && forge test                # unit + Celo mainnet fork tests
 forge script script/Deploy.s.sol --rpc-url celo --broadcast --verify --interactives 1
 ```
 
+## For AI agents
+
+An agent with its own funded wallet can set up a Bitcoin savings plan in two transactions — and so can an agent assisting a human (the web app handles the signing):
+
+- **Agent skill**: `npx skills add csacanam/comprabtc` — covers plan creation (viem), monitoring, budget math, cancelling, and the permissionless x402 execution trigger.
+- **Service descriptor** (machine-readable how-to): [`GET https://comprabtc-production.up.railway.app/`](https://comprabtc-production.up.railway.app/) · LLM index: [comprabtc.vercel.app/llms.txt](https://comprabtc.vercel.app/llms.txt)
+- **Agent identity**: ERC-8004 #9665 on Celo — [metadata](https://comprabtc.vercel.app/metadata.json) · [8004scan](https://www.8004scan.io/agents/celo/9665)
+
 ## Hackathon tracks
 
 - **Track 1 — on-chain revenue:** protocol fee charged inside `execute()`, every tx tagged with ERC-8021 attribution.
