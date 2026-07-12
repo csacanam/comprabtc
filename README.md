@@ -21,15 +21,40 @@ Agent identity: **ERC-8004 #9665** on Celo mainnet ([8004scan](https://www.8004s
 
 ## How it works
 
-```
-User (MiniPay / browser wallet)
-  │  2 txs, once: approve(budget) + createPlan(amount, interval)
-  ▼
-DCAExecutor.sol  ── non-custodial: pulls one installment via transferFrom,
-  │                 swaps on Uniswap V3, sends WBTC straight to the user
-  ▼
-Keeper (cron) ──► pays its own execution API via x402 (facilitator api.x402.celo.org)
-                  then calls execute(user) with attribution tags
+```mermaid
+flowchart TB
+    USER["👤 User wallet<br/>(MiniPay / MetaMask / Valora)"]
+    FE["Frontend — Next.js PWA<br/>(Vercel)"]
+
+    subgraph onchain["⛓️ Celo mainnet"]
+        USDT["USDT (ERC-20)"]
+        EXEC["DCAExecutor<br/>0xd03f…4189<br/>non-custodial, on-chain limits"]
+        ROUTER["Uniswap V3 SwapRouter02<br/>USDT/WBTC 0.3% pool"]
+        TREASURY["Treasury"]
+    end
+
+    subgraph backend["🤖 Agent backend — Railway"]
+        KEEPER["Keeper (cron 60s)<br/>scans PlanCreated events,<br/>checks due plans"]
+        API["Express API<br/>POST /api/execute<br/>(x402-gated, permissionless)"]
+        DB[("Supabase<br/>plans · executions")]
+        TG["Telegram bot<br/>purchase alerts + ops"]
+    end
+
+    FACIL["x402 facilitator<br/>api.x402.celo.org"]
+
+    USER -- "① approve(budget) — once" --> USDT
+    USER -- "② createPlan(amount, interval) — once" --> EXEC
+    FE -.-> USER
+    KEEPER -- "discovers plans<br/>(PlanCreated events)" --> EXEC
+    KEEPER -- "③ pays 0.02 USDT via x402<br/>(EIP-3009 signature)" --> API
+    API -- "verify + settle" --> FACIL
+    API -- "④ execute(user, minOut)<br/>+ ERC-8021 attribution tags" --> EXEC
+    EXEC -- "⑤ transferFrom<br/>(one installment)" --> USDT
+    EXEC -- "fee 1% + $0.005" --> TREASURY
+    EXEC -- "⑥ swap USDT→WBTC" --> ROUTER
+    ROUTER -- "⑦ WBTC straight<br/>to the user's wallet" --> USER
+    API -- "records execution" --> DB
+    API -- "🔔 purchase alert" --> TG
 ```
 
 1. The user approves USDT to `DCAExecutor` (cap = total plan budget) and creates a plan with on-chain limits (amount per run, minimum interval). Cancelling = one click (`cancelPlan` or `approve(0)`).
