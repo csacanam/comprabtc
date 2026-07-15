@@ -11,11 +11,12 @@
 import React, { useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { parseUnits, formatUnits } from 'viem';
+import { parseUnits, formatUnits, parseEther } from 'viem';
 import { Button, Input, Select, Card, CardContent, Badge } from '@/components/neo-brutal';
 import {
   USDT, WBTC, POOL_FEE, EXECUTOR, erc20Abi, dcaExecutorAbi, attributionSuffix,
 } from '@/lib/web3/contracts';
+import { isMiniPay } from '@/lib/web3/config';
 import {
   FREQUENCIES, SUGGESTED_AMOUNTS, MIN_AMOUNT_USDT, MAX_AMOUNT_USDT,
 } from '@/lib/plan-config';
@@ -29,6 +30,12 @@ const DISPLAY_FREQUENCIES = ['3600', '21600', '43200', '86400', '604800'];
 const SUGGESTED_RUNS = [25, 50, 100, 200];
 const MIN_RUNS = 1;
 const MAX_RUNS = 1000;
+
+// Las billeteras de browser (Rabby, MetaMask…) pagan la comisión de red en CELO
+// y no soportan CIP-64; sin saldo, rechazan la tx antes de enviarla y el usuario
+// solo vería el error genérico. MiniPay abstrae la comisión → no aplica.
+// Umbral holgado para cubrir las 2 transacciones del flujo de creación.
+const MIN_GAS_CELO = parseEther('0.002');
 
 export default function PlanPage() {
   const { address } = useAccount();
@@ -162,11 +169,27 @@ export default function PlanPage() {
     : step === 'registering' ? t('plan.registering')
     : '';
 
+  // En browser, verificar CELO para la comisión de red ANTES de pedir la firma:
+  // con el aviso claro el usuario sabe qué falta (era el "no se pudo crear" de Rabby).
+  const hasGasForFees = async (): Promise<boolean> => {
+    if (isMiniPay() || !publicClient || !address) return true;
+    try {
+      const balance = await publicClient.getBalance({ address });
+      return balance >= MIN_GAS_CELO;
+    } catch {
+      return true; // si el RPC falla, no bloquear: la billetera dará su propio error
+    }
+  };
+
   // Crear plan: approve + createPlan + registro en backend
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit || !address || !publicClient) return;
     setError('');
+    if (!(await hasGasForFees())) {
+      setError(t('plan.gasError'));
+      return;
+    }
 
     const amountPerRun = parseUnits(amount, 6);
     const budget = amountPerRun * BigInt(budgetRuns);
@@ -238,6 +261,11 @@ export default function PlanPage() {
     if (!address || !publicClient || !onchainPlan || !canRenew) return;
     setRenewing(true);
     setError('');
+    if (!(await hasGasForFees())) {
+      setError(t('plan.gasError'));
+      setRenewing(false);
+      return;
+    }
     try {
       const hash = await writeContractAsync({
         address: USDT,
@@ -262,6 +290,11 @@ export default function PlanPage() {
     if (!address || !publicClient) return;
     setCancelling(true);
     setError('');
+    if (!(await hasGasForFees())) {
+      setError(t('plan.gasError'));
+      setCancelling(false);
+      return;
+    }
     try {
       const hash = await writeContractAsync({
         address: EXECUTOR,

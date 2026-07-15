@@ -123,6 +123,9 @@ const dict = {
     'plan.feePerRun': 'Comisión: {fee} por cuota ({pct}% de tu compra)',
     'plan.feeTip': 'Tip: con cuotas de {amount} la comisión baja a {pct}%. Tú decides — cuotas chicas también funcionan.',
     'plan.submitError': 'No se pudo crear el plan. Revisa tu billetera e inténtalo de nuevo.',
+    // Solo se muestra en billeteras de browser (Rabby, MetaMask…), nunca en
+    // MiniPay — por eso aquí sí se nombra CELO (la regla de no mencionarlo es de MiniPay).
+    'plan.gasError': 'Para la comisión de red necesitas una pequeña cantidad de CELO en tu billetera (~$0.05 alcanza de sobra). Tu USDT está bien: agrega un poco de CELO e inténtalo de nuevo.',
     'plan.approving': 'Autorizando límite de USDT… (1/2)',
     'plan.creating': 'Creando plan… (2/2)',
     'plan.registering': 'Activando agente…',
@@ -315,6 +318,7 @@ const dict = {
     'plan.feePerRun': 'Commission: {fee} per installment ({pct}% of your purchase)',
     'plan.feeTip': 'Tip: with {amount} installments the commission drops to {pct}%. Your call — small installments work too.',
     'plan.submitError': "Couldn't create the plan. Check your wallet and try again.",
+    'plan.gasError': 'To pay the network fee you need a small amount of CELO in your wallet (~$0.05 is more than enough). Your USDT is fine — add a little CELO and try again.',
     'plan.approving': 'Authorizing USDT limit… (1/2)',
     'plan.creating': 'Creating plan… (2/2)',
     'plan.registering': 'Activating agent…',
