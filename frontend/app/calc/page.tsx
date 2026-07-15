@@ -96,6 +96,7 @@ function simulate(prices: [number, number][], perBuy: number) {
 
 // Dos preguntas distintas: por qué el activo, y por qué nuestro método
 const WHY_BTC = [
+  { key: 'btc0', emoji: '🏛️' },
   { key: 'btc1', emoji: '🪙' },
   { key: 'btc2', emoji: '🌍' },
   { key: 'btc3', emoji: '🛡️' },

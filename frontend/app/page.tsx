@@ -80,6 +80,11 @@ export default function LandingPage() {
           <p className="text-center text-sm text-muted-foreground">
             {t('landing.note')}
           </p>
+
+          {/* Visión: oro y dólares digitales (solo en el landing, no en la app) */}
+          <p className="text-center text-sm text-muted-foreground border-2 border-dashed border-foreground/30 px-4 py-3">
+            {t('landing.roadmap')}
+          </p>
         </div>
       </section>
 
