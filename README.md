@@ -102,6 +102,19 @@ An agent with its own funded wallet can set up a Bitcoin savings plan in two tra
 - **Service descriptor** (machine-readable how-to): [`GET https://comprabtc-production.up.railway.app/`](https://comprabtc-production.up.railway.app/) · LLM index: [comprabtc.vercel.app/llms.txt](https://comprabtc.vercel.app/llms.txt)
 - **Agent identity**: ERC-8004 #9665 on Celo — [metadata](https://comprabtc.vercel.app/metadata.json) · [8004scan](https://www.8004scan.io/agents/celo/9665)
 
+## Transparency
+
+**Operator wallets (declared):**
+
+| Role | Address |
+|---|---|
+| Keeper (executes plans) | [`0x2F6a8283546d28506B312013F77aA38e60AF99B0`](https://celoscan.io/address/0x2F6a8283546d28506B312013F77aA38e60AF99B0) |
+| Treasury / payTo (receives fees) | [`0x6Bd5c303b2ed7E264C1Ce9D3592457292a1F1c43`](https://celoscan.io/address/0x6Bd5c303b2ed7E264C1Ce9D3592457292a1F1c43) |
+
+**On-chain volume is real user capital.** Each plan starts with a user's own `approve`; the keeper pulls one installment per run via `transferFrom` and the purchased WBTC goes straight to the user's wallet, where it stays. No custody, no round-trips — the volume is actual BTC purchases with real economic intent.
+
+**x402 is internal metering with an open door.** The keeper pays x402 on every run, so **each x402 payment maps to one real executed purchase** — not standalone dust. `/api/execute` is permissionless and auto-registers plans from on-chain events, so any external agent or human can invoke it and settle their own x402; it is not a closed loop.
+
 ## Hackathon tracks
 
 - **Track 1 — on-chain revenue:** protocol fee charged inside `execute()`, every tx tagged with ERC-8021 attribution.
