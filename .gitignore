@@ -26,3 +26,34 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# skills installer scaffolding (reproducible from skills-lock.json)
+# keep our own authored skill (skills/comprabtc), ignore the rest
+.agents/
+.claude/skills/
+skills/*
+!skills/comprabtc/
+
+# per-tool AI agent shims
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.windsurf/
+.zencoder/
