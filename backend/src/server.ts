@@ -4,7 +4,7 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { isAddress, formatUnits } from "viem";
 import { config, USDT, CELO_NETWORK, USDT_EIP712 } from "./config.js";
-import { readPlan, readUserFunds, readFees, quoteUsdtToWbtc, sendExecute, btcSpotPriceUsdt } from "./chain.js";
+import { readPlan, readUserFunds, readFees, quoteUsdtToWbtc, sendExecute, btcSpotPriceUsdt, keeperAccount } from "./chain.js";
 import { sendTelegram, telegramEnabled, userMessages, normalizeLang } from "./telegram.js";
 import * as db from "./db.js";
 
@@ -228,19 +228,30 @@ export function buildServer() {
   // ---------------------------------------------------- stats públicas
   app.get("/api/stats", async (_req, res) => {
     try {
-      const [stats, price, credits] = await Promise.all([
+      const [stats, price, credits, fees] = await Promise.all([
         db.getGlobalStats(),
         btcSpotPriceUsdt().catch(() => null),
         fetch(`https://x402.celo.org/api/account?address=${config.payTo}`)
           .then((r) => r.json())
           .then((d: { balances?: { mainnet?: number } }) => d.balances?.mainnet ?? null)
           .catch(() => null),
+        // Ingreso REAL: comisiones de wallets externas (excluye las del keeper,
+        // que son circulares — nos las cobramos a nosotros mismos). Misma fuente
+        // que el digest de ops, para que el número público no mienta.
+        db.getFeeBreakdown([keeperAccount.address]).catch(() => null),
       ]);
+      // fee_usdt se guarda en unidades USDT (6 decimales) → humanos.
+      const revenueUsd = fees ? fees.externalFees / 1e6 : 0;
       res.json({
         ...stats,
         btcPriceUsdt: price,
-        x402PaymentsSettled: credits != null ? 500 - credits : null,
+        // Cada compra exitosa = exactamente 1 pago x402 liquidado (1 crédito =
+        // $0.001 = 1 settlement). Antes se derivaba de `500 - credits`, que daba
+        // negativo tras recargar créditos por encima de 500.
+        x402PaymentsSettled: stats.totalPurchases,
         x402CreditsRemaining: credits,
+        // Forma consumida por saka labs (dashboard de revenue): revenue.totalUsd
+        revenue: { totalUsd: revenueUsd.toFixed(6), source: "user_fees_external" },
       });
     } catch (err) {
       console.error("[stats]", err);

@@ -123,8 +123,10 @@ async function opsMonitor() {
       publicClient.readContract({ address: USDT, abi: erc20Abi, functionName: "balanceOf", args: [config.payTo] }),
     ]);
     if (stats) {
-      const settles = credits != null ? 500 - credits : null;
-      const creditCost = settles != null ? settles * 0.001 : null;
+      // Settlements x402 = compras exitosas (1 crédito = $0.001 = 1 settlement).
+      // No derivar de `500 - credits`: al recargar créditos por encima de 500 daba negativo.
+      const settles = stats.totalPurchases;
+      const creditCost = settles * 0.001;
       const keeperBtcUsd = price != null ? (Number(keeperSats) / 1e8) * price : null;
 
       // Semáforo por saldo: 🚨 bajo el mínimo operativo, ⚠️ cerca (2x), ✅ ok
@@ -134,8 +136,8 @@ async function opsMonitor() {
       const pnlBlock = pnl
         ? `\n💰 <b>P&L</b>\n` +
           `Ingreso real (comisiones de usuarios): <b>$${(pnl.externalFees / 1e6).toFixed(3)} USDT</b>\n` +
-          `Circular (keeper→nosotros, no es ingreso): $${(pnl.circularFees / 1e6).toFixed(3)} comisiones + $${settles != null ? (settles * 0.02).toFixed(2) : "?"} x402\n` +
-          `Costos: créditos x402 ~$${creditCost?.toFixed(3) ?? "?"} + gas en CELO\n`
+          `Circular (keeper→nosotros, no es ingreso): $${(pnl.circularFees / 1e6).toFixed(3)} comisiones + $${(settles * 0.02).toFixed(2)} x402\n` +
+          `Costos: créditos x402 ~$${creditCost.toFixed(3)} + gas en CELO\n`
         : "";
 
       const balancesBlock =
@@ -152,7 +154,7 @@ async function opsMonitor() {
           `Compras: <b>${stats.totalPurchases}</b> · Volumen: <b>$${(stats.totalVolumeUsdt / 1e6).toFixed(2)}</b>\n` +
           `Planes activos: <b>${stats.activePlans}</b> · Usuarios: <b>${stats.totalUsers}</b>\n` +
           `Sats acumulados por usuarios: <b>${stats.totalSats.toLocaleString("es-CO")}</b>\n` +
-          `x402 liquidados: <b>${settles ?? "?"}</b>\n` +
+          `x402 liquidados: <b>${settles}</b>\n` +
           pnlBlock +
           balancesBlock,
       );
