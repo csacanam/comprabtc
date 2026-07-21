@@ -1,7 +1,7 @@
 import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm";
 import { config, CELO_NETWORK, USDT, WBTC } from "./config.js";
-import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans, readPlan } from "./chain.js";
+import { keeperAccount, btcSpotPriceUsdt, publicClient, discoverPlans, readPlan, readUserFunds } from "./chain.js";
 import { erc20Abi } from "./abi.js";
 import { sendOps } from "./telegram.js";
 import * as db from "./db.js";
@@ -82,6 +82,32 @@ async function adoptOnchainPlans() {
       frequencySeconds: plan.minInterval,
     });
     console.log(`[keeper] plan on-chain adoptado: ${plan.user} ($${plan.amountPerRun / 1e6} cada ${plan.minInterval}s)`);
+  }
+}
+
+// Reactiva planes cuyo PRESUPUESTO autorizado se agotó (status budget_exhausted)
+// una vez que el usuario renueva el allowance. Es la contraparte del estado
+// terminal: en vez de reintentar /api/execute cada hora, aquí basta una lectura
+// barata del allowance (throttled) y, si alcanzó de nuevo, se reactiva. Así
+// renovar el presupuesto en la app (sin recrear el plan) hace que el agente
+// vuelva solo, sin depender de que el frontend avise al backend.
+const RESUME_CHECK_MS = 5 * 60_000;
+let lastResumeCheckAt = 0;
+
+async function resumeExhaustedPlans() {
+  if (Date.now() - lastResumeCheckAt < RESUME_CHECK_MS) return;
+  lastResumeCheckAt = Date.now();
+  const exhausted = await db.getPlansByStatus("budget_exhausted");
+  for (const plan of exhausted) {
+    try {
+      const { allowance } = await readUserFunds(plan.wallet_address as `0x${string}`);
+      if (allowance >= BigInt(plan.amount_per_run)) {
+        await db.setPlanStatus(plan.id, "active", new Date()); // arranca ya; la ejecución valida active on-chain
+        console.log(`[keeper] presupuesto renovado → reactivado: ${plan.wallet_address}`);
+      }
+    } catch (err) {
+      console.warn(`[keeper] resume falló para ${plan.wallet_address}:`, (err as Error)?.message ?? err);
+    }
   }
 }
 
@@ -171,6 +197,7 @@ async function tick() {
       await reconcilePlansWithChain().catch((err) => console.warn("[keeper] reconcile falló:", err?.message ?? err));
     }
     await adoptOnchainPlans().catch((err) => console.warn("[keeper] discovery falló:", err?.message ?? err));
+    await resumeExhaustedPlans().catch((err) => console.warn("[keeper] resume falló:", err?.message ?? err));
     await opsMonitor().catch((err) => console.warn("[keeper] ops monitor falló:", err?.message ?? err));
     const due = await db.getDuePlans();
     if (due.length > 0) console.log(`[keeper] ${due.length} plan(es) por ejecutar`);

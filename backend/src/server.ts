@@ -129,16 +129,25 @@ export function buildServer() {
       // desconcertaba al usuario que sí veía balance en su billetera)
       const { balance, allowance } = await readUserFunds(user as `0x${string}`);
       if (balance < onchain.amountPerRun || allowance < onchain.amountPerRun) {
-        const skipStatus = balance < onchain.amountPerRun ? "skipped_no_funds" : "skipped_no_allowance";
-        const firstSkip = planRow.status !== "no_funds"; // avisar solo al entrar al estado
+        const noFunds = balance < onchain.amountPerRun;
+        const skipStatus = noFunds ? "skipped_no_funds" : "skipped_no_allowance";
+        // Dos estados distintos con reintento distinto:
+        //  - no_funds: falta USDT en la billetera. Se reintenta cada ciclo,
+        //    porque cargar USDT no dispara ningún evento que el keeper vea.
+        //  - budget_exhausted: se agotó el PRESUPUESTO autorizado (allowance).
+        //    Terminal: se excluye de getDuePlans (no martillar /api/execute cada
+        //    hora). El keeper lo reactiva solo cuando detecta el allowance
+        //    renovado (resumeExhaustedPlans), así que renovar en la app basta.
+        const newStatus = noFunds ? "no_funds" : "budget_exhausted";
+        const firstSkip = planRow.status !== newStatus; // avisar solo al entrar al estado
         await db.recordExecution({ planId: planRow.id, status: skipStatus });
-        await db.setPlanStatus(planRow.id, "no_funds", nextRun(planRow));
+        await db.setPlanStatus(planRow.id, newStatus, nextRun(planRow));
         if (firstSkip && telegramEnabled()) {
           db.getTelegramByUserId(planRow.user_id)
             .then((link) => {
               if (!link) return;
               const lang = normalizeLang(link.lang);
-              const msg = skipStatus === "skipped_no_funds"
+              const msg = noFunds
                 ? userMessages[lang].skippedNoFunds
                 : userMessages[lang].skippedNoAllowance;
               return sendTelegram(link.chatId, msg);
