@@ -85,17 +85,22 @@ export default function DashboardPage() {
   const totalExecutions = execPages?.pages[0]?.total ?? 0;
 
   const hasActivePlan = onchainPlan?.[3] === true;
-  const sats = wbtcBalance != null ? Number(wbtcBalance) : 0;
   const usdt = usdtBalance != null ? Number(formatUnits(usdtBalance, 6)) : 0;
   const basis = apiPlan?.costBasis ?? null;
   const btcPrice = apiPlan?.btcPriceUsdt ?? null;
-  const valueUsd = btcPrice != null ? (sats / SATS_PER_BTC) * btcPrice : null;
+
+  // Dos verdades distintas:
+  // - stackedSats: total comprado con la app (histórico, monotónico; no baja al retirar)
+  // - walletSats: saldo real en la billetera hoy (baja a 0 tras un retiro)
+  const stackedSats = basis?.totalSats ?? 0;
+  const walletSats = wbtcBalance != null ? Number(wbtcBalance) : 0;
+  const walletValueUsd = btcPrice != null ? (walletSats / SATS_PER_BTC) * btcPrice : null;
 
   const toggleUnit = () => setUnit(unit === 'sats' ? 'btc' : 'sats');
 
-  // La bóveda nunca desaparece: si hay historial o sats, se muestra aunque
-  // el plan esté pausado/cancelado (con aviso para reactivar).
-  const hasHistory = totalExecutions > 0 || sats > 0;
+  // La bóveda nunca desaparece: si hay historial, sats acumulados o saldo en
+  // billetera, se muestra aunque el plan esté pausado/cancelado.
+  const hasHistory = totalExecutions > 0 || stackedSats > 0 || walletSats > 0;
 
   // ===== Sin plan ni historial: estado vacío =====
   if (!hasActivePlan && !hasHistory && !isLoading && !execsLoading) {
@@ -160,9 +165,29 @@ export default function DashboardPage() {
           title="sats ↔ BTC"
         >
           <p className="text-sm text-primary-foreground/80">{t('dash.accumulated')}</p>
-          <p className="text-3xl font-bold">{formatBtcAmount(sats, unit, locale)}</p>
-          {valueUsd != null && (
-            <p className="text-sm text-primary-foreground/80">≈ {formatUsd(valueUsd)}</p>
+          <p className="text-3xl font-bold">{formatBtcAmount(stackedSats, unit, locale)}</p>
+          <p className="text-sm text-primary-foreground/80">{t('dash.accumulatedHint')}</p>
+        </CardContent>
+      </Card>
+
+      {/* Saldo real en la billetera hoy (baja al retirar; complementa el histórico) */}
+      <Card>
+        <CardContent className="py-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{t('dash.inWallet')}</p>
+            <p className="font-bold">
+              {formatBtcAmount(walletSats, unit, locale)}
+              {walletValueUsd != null && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  ≈ {formatUsd(walletValueUsd)}
+                </span>
+              )}
+            </p>
+          </div>
+          {walletSats > 0 && (
+            <Link href="/app/withdraw" className="block">
+              <Button fullWidth variant="outline" size="sm">{t('dash.withdraw')}</Button>
+            </Link>
           )}
         </CardContent>
       </Card>
